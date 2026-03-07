@@ -9,9 +9,11 @@ import {ICTF} from "./interfaces/ICTF.sol";
 ///         The encoded payload is passed to Safe's multiSend for atomic execution.
 contract SafeBatchHelper {
     address public immutable presage;
+    address public immutable morpho;
 
-    constructor(address presage_) {
+    constructor(address presage_, address morpho_) {
         presage = presage_;
+        morpho = morpho_;
     }
 
     /// @notice Encode the full borrow flow: deposit collateral + borrow stablecoins.
@@ -19,11 +21,10 @@ contract SafeBatchHelper {
     function encodeBorrow(
         uint256 marketId,
         address ctf,
-        uint256 positionId,
         uint256 collateralAmount,
         uint256 borrowAmount
     ) external view returns (bytes memory encoded) {
-        bytes[] memory calls = new bytes[](3);
+        bytes[] memory calls = new bytes[](4);
 
         // 1. Approve Presage to pull CTF ERC1155
         calls[0] = _encodeTx(
@@ -31,14 +32,20 @@ contract SafeBatchHelper {
             abi.encodeWithSignature("setApprovalForAll(address,bool)", presage, true)
         );
 
-        // 2. Deposit collateral via Presage
+        // 2. Authorize Presage on Morpho Blue (Required for router to manage Safe's position)
         calls[1] = _encodeTx(
+            morpho,
+            abi.encodeWithSignature("setAuthorization(address,bool)", presage, true)
+        );
+
+        // 3. Deposit collateral via Presage
+        calls[2] = _encodeTx(
             presage,
             abi.encodeWithSignature("depositCollateral(uint256,uint256)", marketId, collateralAmount)
         );
 
-        // 3. Borrow
-        calls[2] = _encodeTx(
+        // 4. Borrow
+        calls[3] = _encodeTx(
             presage,
             abi.encodeWithSignature("borrow(uint256,uint256)", marketId, borrowAmount)
         );

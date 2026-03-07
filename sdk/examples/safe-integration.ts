@@ -33,6 +33,10 @@ async function main() {
   // ──────── LENDING FLOW (SUPPLY) ────────
 
   console.log("Generating Supply Payload...");
+  console.log("This will bundle 2 operations into 1 transaction:");
+  console.log("  1. USDT.approve(PresageRouter, amount)");
+  console.log("  2. PresageRouter.supply(marketId, amount)");
+
   const supplyAmount = ethers.parseUnits("1000", 18);
   const supplyPayload = await client.encodeFullSupply(
     marketId,
@@ -45,16 +49,21 @@ async function main() {
 
   // ──────── BORROWING FLOW ────────
 
-  console.log("Generating Borrow Payload...");
+  console.log("\nGenerating Borrow Payload...");
+  console.log("This will bundle 4 operations into 1 transaction:");
+  console.log("  1. CTF.setApprovalForAll(PresageRouter, true)");
+  console.log("  2. Morpho.setAuthorization(PresageRouter, true)  <-- Required for Safe borrowing");
+  console.log("  3. PresageRouter.depositCollateral(marketId, collateralAmount)");
+  console.log("  4. PresageRouter.borrow(marketId, borrowAmount)");
+
   const collateralAmount = ethers.parseEther("100");
   const borrowAmount = ethers.parseUnits("50", 18);
 
   const borrowPayload = await client.encodeFullBorrow(
     marketId,
     CTF_CONTRACT,
-    POSITION_ID,
     collateralAmount,
-    borrowAmount,
+    borrowAmount
   );
 
   console.log("Safe MultiSend Payload (Borrow):", borrowPayload);

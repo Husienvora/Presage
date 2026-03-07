@@ -59,7 +59,6 @@ console.log(stats.healthFactor);   // Current health factor
 const payload = await client.encodeFullBorrow(
   marketId,
   CTF_CONTRACT,
-  POSITION_ID,
   collateralAmount,
   borrowAmount
 );

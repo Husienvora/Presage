@@ -10,7 +10,7 @@ export const PRESAGE_ABI = [
 ];
 
 export const SAFE_BATCH_HELPER_ABI = [
-  "function encodeBorrow(uint256 marketId, address ctf, uint256 positionId, uint256 collateralAmount, uint256 borrowAmount) external view returns (bytes memory)",
+  "function encodeBorrow(uint256 marketId, address ctf, uint256 collateralAmount, uint256 borrowAmount) external view returns (bytes memory)",
   "function encodeRepayAndRelease(uint256 marketId, address loanToken, uint256 repayAmount, uint256 releaseAmount) external view returns (bytes memory)",
   "function encodeSupply(uint256 marketId, address loanToken, uint256 amount) external view returns (bytes memory)",
   "function encodeWithdraw(uint256 marketId, uint256 amount) external view returns (bytes memory)"
@@ -31,6 +31,7 @@ export const WRAPPER_FACTORY_ABI = [
 
 export const MORPHO_ABI = [
   "function position(bytes32 id, address user) external view returns (uint256 supplyShares, uint128 borrowShares, uint128 collateral)",
-  "function market(bytes32 id) external view returns (uint128 totalSupplyAssets, uint128 totalSupplyShares, uint128 totalBorrowAssets, uint128 totalBorrowShares, uint128 lastUpdate, uint128 fee)"
+  "function market(bytes32 id) external view returns (uint128 totalSupplyAssets, uint128 totalSupplyShares, uint128 totalBorrowAssets, uint128 totalBorrowShares, uint128 lastUpdate, uint128 fee)",
+  "function setAuthorization(address authorized, bool authorizedStatus) external"
 ];
 

@@ -1,5 +1,5 @@
 import { ethers, Contract, Signer, Provider, BigNumberish } from "ethers";
-import { PRESAGE_ABI, SAFE_BATCH_HELPER_ABI, ERC20_ABI, WRAPPER_FACTORY_ABI } from "./abis";
+import { PRESAGE_ABI, SAFE_BATCH_HELPER_ABI, ERC20_ABI, WRAPPER_FACTORY_ABI, MORPHO_ABI } from "./abis";
 
 export interface PresageConfig {
   presageAddress: string;
@@ -46,6 +46,34 @@ export class PresageClient {
 
   async repay(marketId: BigNumberish, amount: BigNumberish) {
     return this.presage.repay(marketId, amount);
+  }
+
+  // ──────── Permissions (EOA Flow) ────────
+
+  /**
+   * Approves the Presage Router to spend a specific amount of loan tokens (e.g. USDT).
+   */
+  async approveLoanToken(loanTokenAddress: string, amount: BigNumberish) {
+    const runner = this.config.signer || this.config.provider;
+    const token = new Contract(loanTokenAddress, ERC20_ABI, runner);
+    return token.approve(this.config.presageAddress, amount);
+  }
+
+  /**
+   * Approves the Presage Router to manage all CTF tokens.
+   */
+  async approveCTF(ctfAddress: string) {
+    const runner = this.config.signer || this.config.provider;
+    const ctf = new Contract(ctfAddress, ["function setApprovalForAll(address operator, bool approved) external"], runner);
+    return ctf.setApprovalForAll(this.config.presageAddress, true);
+  }
+
+  /**
+   * Authorizes the Presage Router on Morpho Blue. 
+   * This is a one-time requirement for borrowing on behalf of the user.
+   */
+  async authorizePresageOnMorpho() {
+    return this.morpho.setAuthorization(this.config.presageAddress, true);
   }
 
   // ──────── Position Tracking ────────
@@ -121,14 +149,12 @@ export class PresageClient {
   async encodeFullBorrow(
     marketId: BigNumberish,
     ctfAddress: string,
-    positionId: BigNumberish,
     collateralAmount: BigNumberish,
     borrowAmount: BigNumberish
   ): Promise<string> {
     return this.batchHelper.encodeBorrow(
       marketId,
       ctfAddress,
-      positionId,
       collateralAmount,
       borrowAmount
     );
