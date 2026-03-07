@@ -9,7 +9,7 @@
 
 ---
 
-## 🌟 For the Layman: What is Presage?
+## For the Layman: What is Presage?
 
 Imagine you've bet $1,000 that a certain event will happen (like a sports game or an election) on a platform like **predict.fun**. Your money is now "locked" in that bet until the event ends.
 
@@ -24,7 +24,7 @@ Imagine you've bet $1,000 that a certain event will happen (like a sports game o
 
 ---
 
-## 🛠️ Technical Overview
+## Technical Overview
 
 Presage is a permissionless lending adapter that bridges **Gnosis Conditional Tokens (ERC1155)** with **Morpho Blue (ERC20-only lending)**. It provides the necessary infrastructure to treat binary outcome tokens as high-quality collateral.
 
@@ -52,7 +52,7 @@ graph TD
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation & Compilation
 
@@ -73,7 +73,7 @@ _Note: For Fork tests, ensure `BNB_RPC_URL` is set in your `.env` (Alchemy/Quick
 
 ---
 
-## 🏗️ Contract Summary
+## Contract Summary
 
 | Contract              | Purpose                                                                        |
 | --------------------- | ------------------------------------------------------------------------------ |
@@ -85,7 +85,7 @@ _Note: For Fork tests, ensure `BNB_RPC_URL` is set in your `.env` (Alchemy/Quick
 
 ---
 
-## 🌐 Network Information (BNB Chain)
+## Network Information (BNB Chain)
 
 ### Mainnet (Chain 56)
 
@@ -99,6 +99,8 @@ _Note: For Fork tests, ensure `BNB_RPC_URL` is set in your `.env` (Alchemy/Quick
 
 ---
 
-## 📜 License
+## License
 
-This project is licensed under the **GMT V2**.
+Copyright (c) 2026 Presage Protocol. All Rights Reserved.
+
+Proprietary and Confidential. Unauthorized copying of this project, via any medium, is strictly prohibited.

@@ -2,12 +2,12 @@
 
 Presage protocol consists of several components. Depending on the environment, you may deploy the full stack or only the wrapping layer.
 
-## 📋 Prerequisites
+## Prerequisites
 
 1. **Private Key**: A wallet with enough BNB for gas (Testnet or Mainnet).
 2. **Environment Variables**: Configure these in `.env`.
 
-## 🏗️ Deploying to BNB Testnet (Wrapping Layer)
+## Deploying to BNB Testnet (Wrapping Layer)
 
 The BNB Testnet currently only supports the wrapping layer, as Morpho Blue is not yet deployed there.
 
@@ -20,7 +20,7 @@ This will deploy:
 - `PriceHub`
 - `FixedPriceAdapter`
 
-## 🚀 Deploying to BNB Mainnet (Full Stack)
+## Deploying to BNB Mainnet (Full Stack)
 
 To deploy the full protocol on BNB Mainnet, you must specify the live addresses for Morpho Blue and the Adaptive Curve IRM.
 
@@ -40,7 +40,7 @@ This will deploy:
 - `Presage` (Router)
 - `SafeBatchHelper` (Multisend encoder)
 
-## 🔧 Post-Deployment Tasks
+## Post-Deployment Tasks
 
 1. **Verification**: After deployment, verify your contracts on BscScan.
     ```sh

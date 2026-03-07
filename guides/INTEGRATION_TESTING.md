@@ -2,14 +2,14 @@
 
 Presage integrates with **predict.fun** on the **BNB Testnet** (Chain 97) to test real-world scenarios of acquiring and wrapping CTF tokens.
 
-## 📋 Prerequisites
+## Prerequisites
 
 1. **Wallet Private Key**: A private key for an EOA (Externally Owned Account) on the BNB Testnet.
 2. **Funds**: Your account must have:
     - **tBNB**: For gas fees.
     - **Testnet USDT**: For buying tokens on predict.fun.
 
-## 🚀 Environment Setup
+## Environment Setup
 
 Create a `.env` file in the project root:
 
@@ -18,7 +18,7 @@ WALLET_PRIVATE_KEY="your_private_key_here"
 PREDICT_API_BASE_URL="https://api-testnet.predict.fun/v1"
 ```
 
-## 📦 SDK Installation (Optional but Recommended)
+## SDK Installation (Optional but Recommended)
 
 The integration test uses predict.fun's SDK to automate the buying process. If the SDK is not installed, the test will skip the order placement and focus on the wrapping/unwrapping logic (assuming you have pre-existing tokens).
 
@@ -26,7 +26,7 @@ The integration test uses predict.fun's SDK to automate the buying process. If t
 npm install @aspect-build/predict-sdk
 ```
 
-## 🛠️ Running the Test
+## Running the Test
 
 Run the following command:
 
@@ -34,7 +34,7 @@ Run the following command:
 npx hardhat test test/Presage.integration.test.ts --network bnbTestnet
 ```
 
-## 🔄 Test Flow Summary
+## Test Flow Summary
 
 1. **Authentication**: Authenticates with predict.fun's API via JWT.
 2. **Order Placement**: Automatically finds a market with liquidity and places a BUY order.
@@ -43,7 +43,7 @@ npx hardhat test test/Presage.integration.test.ts --network bnbTestnet
 5. **Transfer**: Verifies the ERC20s can be transferred to a recipient wallet.
 6. **Unwrapping**: The recipient converts the ERC20s back to the original CTF tokens.
 
-## 🧪 Verified Testnet Addresses
+## Verified Testnet Addresses
 
 These addresses are auto-discovered via the predict.fun API/SDK:
 - **CTF Registry**: Discovered dynamically (supports both standard and yield-bearing).
