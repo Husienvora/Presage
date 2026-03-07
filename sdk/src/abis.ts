@@ -1,0 +1,36 @@
+export const PRESAGE_ABI = [
+  "function depositCollateral(uint256 marketId, uint256 amount) external",
+  "function releaseCollateral(uint256 marketId, uint256 amount) external",
+  "function borrow(uint256 marketId, uint256 amount) external",
+  "function repay(uint256 marketId, uint256 amount) external",
+  "function supply(uint256 marketId, uint256 amount) external",
+  "function withdraw(uint256 marketId, uint256 amount) external",
+  "function getMarket(uint256 marketId) external view returns (tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) morphoParams, tuple(address ctf, bytes32 parentCollectionId, bytes32 conditionId, uint256 positionId, uint256 oppositePositionId) ctfPosition, uint256 resolutionAt)",
+  "function healthFactor(uint256 marketId, address borrower) external view returns (uint256)"
+];
+
+export const SAFE_BATCH_HELPER_ABI = [
+  "function encodeBorrow(uint256 marketId, address ctf, uint256 positionId, uint256 collateralAmount, uint256 borrowAmount) external view returns (bytes memory)",
+  "function encodeRepayAndRelease(uint256 marketId, address loanToken, uint256 repayAmount, uint256 releaseAmount) external view returns (bytes memory)",
+  "function encodeSupply(uint256 marketId, address loanToken, uint256 amount) external view returns (bytes memory)",
+  "function encodeWithdraw(uint256 marketId, uint256 amount) external view returns (bytes memory)"
+];
+
+export const ERC20_ABI = [
+  "function approve(address spender, uint256 amount) external returns (bool)",
+  "function allowance(address owner, address spender) external view returns (uint256)",
+  "function balanceOf(address account) external view returns (uint256)",
+  "function decimals() external view returns (uint8)"
+];
+
+export const WRAPPER_FACTORY_ABI = [
+  "function getWrapper(uint256 positionId) external view returns (address)",
+  "function predictAddress(address ctf, uint256 positionId) external view returns (address)",
+  "function create(address ctf, uint256 positionId, uint8 decimals) external returns (address)"
+];
+
+export const MORPHO_ABI = [
+  "function position(bytes32 id, address user) external view returns (uint256 supplyShares, uint128 borrowShares, uint128 collateral)",
+  "function market(bytes32 id) external view returns (uint128 totalSupplyAssets, uint128 totalSupplyShares, uint128 totalBorrowAssets, uint128 totalBorrowShares, uint128 lastUpdate, uint128 fee)"
+];
+
