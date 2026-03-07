@@ -17,6 +17,29 @@ Based on the successful execution of the fork tests against **BNB Mainnet (Chain
 
 ---
 
+## Mainnet Deployment Status
+
+The protocol is ready for deployment to **BNB Mainnet (Chain 56)**. The deployment involves five core contracts that must be initialized and verified on-chain.
+
+### Target Deployment Parameters
+*   **Morpho Blue Singleton**: `0x01b0Bd309AA75547f7a37Ad7B1219A898E67a83a`
+*   **Adaptive Curve IRM**: `0x7112D95cB5f6b13bF5F5B94a373bB3b2B381F979`
+*   **Target Chain**: BNB Smart Chain (Mainnet)
+
+### Deployment Sequence
+1.  **WrapperFactory**: Deploys EIP-1167 clones for CTF tokens.
+2.  **PriceHub**: Central registry for adapters and LLTV decay logic.
+3.  **FixedPriceAdapter**: The default fallback oracle ($1.00).
+4.  **Presage (Router)**: The primary user entry point.
+5.  **SafeBatchHelper**: On-chain utility for Gnosis Safe batching.
+
+### Transparency & Trust
+All contracts **must be verified on BscScan** immediately upon deployment. This is critical for:
+*   **SafeBatchHelper**: Ensuring users can audit the logic that generates their multi-sig transaction payloads.
+*   **WrappedCTF Clones**: Verification of the implementation contract ensures all clones are recognized as secure ERC20 tokens.
+
+---
+
 ## SDK Status & Pending Tasks
 
 The **Presage SDK** has been scaffolded and architected to support the core protocol features, including high-level client operations and Gnosis Safe multi-sig workflows.
