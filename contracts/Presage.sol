@@ -179,10 +179,12 @@ contract Presage is ERC1155Holder, IFlashUnwrapCallback, Ownable {
 
         if (amount >= owed) {
             shares = borrowShares_;
+            assets = 0; // Morpho: if shares > 0, assets can be 0 to repay full share amount
             loan.safeTransferFrom(msg.sender, address(this), owed);
             loan.forceApprove(address(morpho), owed);
         } else {
             assets = amount;
+            shares = 0;
             loan.safeTransferFrom(msg.sender, address(this), amount);
             loan.forceApprove(address(morpho), amount);
         }

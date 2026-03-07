@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { parseUnits, parseEther, formatEther, Contract } from "ethers";
+import { parseUnits, parseEther, formatEther, formatUnits, Contract } from "ethers";
 
 /**
  * Fork Test — BNB Mainnet
@@ -102,7 +102,6 @@ describe("Presage Fork Test (BNB Mainnet)", function () {
     const market = await presage.getMarket(1n);
     const mp = market.morphoParams;
     
-    // 2. Calculate Market Id (using same logic as contract)
     const abiCoder = ethers.AbiCoder.defaultAbiCoder();
     const encoded = abiCoder.encode(
         ["address", "address", "address", "address", "uint256"],
@@ -110,13 +109,45 @@ describe("Presage Fork Test (BNB Mainnet)", function () {
     );
     const id = ethers.keccak256(encoded);
 
-    // 3. Check Morpho position
     const morpho = await ethers.getContractAt("IMorpho", MORPHO);
     const aliceAddr = await alice.getAddress();
     const position = await morpho.position(id, aliceAddr);
     
-    // Morpho uses virtual shares/assets, but supplyShares should be > 0
     expect(position.supplyShares).to.be.gt(0n);
-    console.log(`    Alice supplyShares: ${position.supplyShares}`);
+  });
+
+  it("should allow borrowing against collateral", async function () {
+    const marketId = 1n;
+    const borrowAmount = parseUnits("20", 18); // 20 USDT against 100 CTF ($100 value)
+    
+    // 1. Seed Price (Owner can call seedPrice directly)
+    const currentPrice = parseUnits("1", 18); // $1.00
+    await priceHub.seedPrice(POSITION_ID, currentPrice);
+
+    // 2. Authorize Presage on Morpho
+    const morpho = await ethers.getContractAt("IMorpho", MORPHO);
+    await morpho.connect(alice).setAuthorization(await presage.getAddress(), true);
+
+    // 3. Borrow
+    const usdt = await ethers.getContractAt("IERC20", USDT);
+    const balanceBefore = await usdt.balanceOf(await alice.getAddress());
+    
+    await presage.connect(alice).borrow(marketId, borrowAmount);
+    
+    const balanceAfter = await usdt.balanceOf(await alice.getAddress());
+    expect(balanceAfter - balanceBefore).to.equal(borrowAmount);
+    console.log(`    Alice borrowed: ${formatUnits(borrowAmount, 18)} USDT`);
+  });
+
+  it("should allow repaying debt", async function () {
+    const marketId = 1n;
+    const repayAmount = parseUnits("5", 18); // Repay a portion
+    
+    const usdt = await ethers.getContractAt("IERC20", USDT);
+    await usdt.connect(alice).approve(await presage.getAddress(), repayAmount);
+    
+    await presage.connect(alice).repay(marketId, repayAmount);
+    
+    console.log(`    Alice repaid: ${formatUnits(repayAmount, 18)} USDT`);
   });
 });
