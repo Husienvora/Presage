@@ -101,6 +101,6 @@ _Note: For Fork tests, ensure `BNB_RPC_URL` is set in your `.env` (Alchemy/Quick
 
 ## License
 
-Copyright (c) 2026 Presage Protocol. All Rights Reserved.
+This project is licensed under the **GNU General Public License v2 (GPL-2.0)**. 
 
-Proprietary and Confidential. Unauthorized copying of this project, via any medium, is strictly prohibited.
+See the `LICENSE` file for details.
