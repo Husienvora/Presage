@@ -19,7 +19,7 @@ const config: HardhatUserConfig = {
     hardhat: {
       // For fork tests against BNB mainnet (where Morpho Blue lives)
       forking: process.env.FORK_BNB
-        ? { url: BNB_RPC, blockNumber: Number(process.env.FORK_BLOCK) || undefined }
+        ? { url: BNB_RPC, ...(process.env.FORK_BLOCK ? { blockNumber: Number(process.env.FORK_BLOCK) } : {}) }
         : undefined,
       chainId: process.env.FORK_BNB ? 56 : 31337,
       hardfork: "cancun",

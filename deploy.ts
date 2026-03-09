@@ -24,7 +24,8 @@ async function main() {
   console.log("FixedPriceAdapter:", await fixedAdapter.getAddress());
 
   // Set as default
-  await priceHub.setDefaultAdapter(await fixedAdapter.getAddress());
+  const setAdapterTx = await priceHub.setDefaultAdapter(await fixedAdapter.getAddress());
+  await setAdapterTx.wait();
   console.log("  → Set as default adapter");
 
   // 4. Presage (requires Morpho Blue address)

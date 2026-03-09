@@ -1,0 +1,44 @@
+PRESAGE PROTOCOL — DEPLOYMENT COST ESTIMATE
+
+Date      : Monday, March 9, 2026
+Time      : 3:03:01 PM
+Network   : BNB Smart Chain (fork at block 85561264)
+Gas Price : 1.0 gwei
+Solidity  : 0.8.28 (optimizer 200 runs, cancun)
+
+────────────────────────────────────────────────────────────────
+  Contract                       Gas Used       Cost (BNB)
+────────────────────────────────────────────────────────────────
+  WrapperFactory                    1230229       0.001230229 BNB
+  PriceHub                          1070619       0.001070619 BNB
+  FixedPriceAdapter                  132807       0.000132807 BNB
+  setDefaultAdapter (tx)              46125       0.000046125 BNB
+  Presage                           2899757       0.002899757 BNB
+  SafeBatchHelper                    590260        0.00059026 BNB
+────────────────────────────────────────────────────────────────
+  TOTAL                             5969797       0.005969797 BNB
+────────────────────────────────────────────────────────────────
+
+  USD Cost Estimates
+  ──────────────────
+  BNB = $300    →  $1.79
+  BNB = $400    →  $2.39
+  BNB = $500    →  $2.98
+  BNB = $600    →  $3.58
+  BNB = $700    →  $4.18
+
+  Per-Contract Breakdown (% of total gas)
+  ────────────────────────────────────────
+  WrapperFactory                  20.6%
+  PriceHub                        17.9%
+  FixedPriceAdapter                2.2%
+  setDefaultAdapter (tx)           0.8%
+  Presage                         48.6%
+  SafeBatchHelper                  9.9%
+
+  Notes
+  ─────
+  - Costs measured via Hardhat fork against live BNB chain state.
+  - Gas price reflects the fork's reported gasPrice at time of run.
+  - Actual cost may vary slightly due to gas price fluctuations.
+  - Does not include post-deploy txs (openMarket, seedPrice, etc).

@@ -8,6 +8,7 @@
     "test": "hardhat test",
     "test:integration": "hardhat test test/Presage.integration.test.ts --network bnbTestnet",
     "test:fork": "hardhat test test/Presage.fork.test.ts --network hardhat",
+    "test:mainnet": "hardhat test test/Presage.mainnet.test.ts --network bnb",
     "deploy:testnet": "hardhat run scripts/deploy.ts --network bnbTestnet",
     "deploy:bnb": "hardhat run scripts/deploy.ts --network bnb",
     "clean": "hardhat clean"
