@@ -44,7 +44,7 @@ async function main() {
 
     // 5. SafeBatchHelper
     const SafeBatchHelper = await ethers.getContractFactory("SafeBatchHelper");
-    const helper = await SafeBatchHelper.deploy(await presage.getAddress());
+    const helper = await SafeBatchHelper.deploy(await presage.getAddress(), morphoAddr);
     await helper.waitForDeployment();
     console.log("SafeBatchHelper:", await helper.getAddress());
   } else {
