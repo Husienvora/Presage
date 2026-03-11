@@ -280,8 +280,12 @@ describe("Presage Fork Test (BNB Mainnet)", function () {
     expect(seized).to.be.gt(0n);
 
     // Alice's position should have reduced debt and collateral
+    const mktAfter = await morpho.market(mid);
     const posAfter = await morpho.position(mid, aliceAddr);
-    console.log(`    Alice debt after : ${formatEther(BigInt(posAfter.borrowShares))} shares`);
+    const debtAfter = BigInt(mktAfter.totalBorrowShares) > 0n
+      ? (BigInt(posAfter.borrowShares) * BigInt(mktAfter.totalBorrowAssets)) / BigInt(mktAfter.totalBorrowShares)
+      : 0n;
+    console.log(`    Alice debt after : ${formatEther(debtAfter)} USDT`);
     console.log(`    Alice coll after : ${formatEther(BigInt(posAfter.collateral))} wCTF`);
     expect(BigInt(posAfter.borrowShares)).to.be.lt(BigInt(pos.borrowShares));
     expect(BigInt(posAfter.collateral)).to.be.lt(BigInt(pos.collateral));
