@@ -4,7 +4,7 @@
  * End-to-end test of the full Presage protocol on BNB mainnet:
  *
  *   Phase 1: Setup
- *     1.  Deploy all Presage contracts (Factory, PriceHub, Presage, SafeBatchHelper)
+ *     1.  Load Presage contracts (from DEPLOYED addresses, or deploy fresh if empty)
  *     2.  Authenticate with predict.fun mainnet API
  *     3.  Set predict.fun exchange approvals
  *     4.  Buy CTF tokens from a live market
@@ -35,8 +35,8 @@
  *
  * Required env vars
  * ─────────────────
- *   WALLET_PRIVATE_KEY       Primary deployer / lender / borrower (with BNB for gas + USDT)
- *   WALLET_PRIVATE_KEY_2     Second Safe owner (with BNB for gas)
+ *   WALLET_PRIVATE_KEY       Primary signer — needs ≥0.03 BNB + ≥6 USDT
+ *   WALLET_PRIVATE_KEY_2     Second signer for unwrap test — needs 0 BNB (funded by signer 1)
  *
  * Pre-configured env vars (in .env)
  * ──────────────────────────────────
@@ -80,6 +80,16 @@ const MULTI_SEND = "0xA238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761";
 // predict.fun mainnet CTF contracts
 const CTF_STANDARD = "0x22DA1810B194ca018378464a58f6Ac2B10C9d244";
 const CTF_YIELD_BEARING = "0x9400F8Ad57e9e0F352345935d6D3175975eb1d9F";
+
+// ── Deployed Contract Addresses ─────────────────────────────────────────────────
+// Populate these after deploying via `deploy.ts` or manually.
+// Leave empty ("") to deploy fresh during the test.
+const DEPLOYED = {
+  wrapperFactory: "",
+  priceHub: "",
+  presage: "",
+  safeBatchHelper: "",
+};
 
 // ── Timing ──────────────────────────────────────────────────────────────────────
 
@@ -285,6 +295,14 @@ let batchHelper: any;
 let presageMarketId: bigint;
 let morphoMarketId: string;
 
+// Gas tracking
+let totalGasUsed = 0n;
+let startBnbBalance = 0n;
+function trackGas(step: string, receipt: { gasUsed: bigint }) {
+  totalGasUsed += receipt.gasUsed;
+  console.log(`    Gas: ${receipt.gasUsed.toString().padStart(9)} │ cumulative: ${totalGasUsed.toString()}`);
+}
+
 // ── Suite ───────────────────────────────────────────────────────────────────────
 
 describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", function () {
@@ -305,6 +323,7 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
     }
 
     const balance = await provider.getBalance(signer.address);
+    startBnbBalance = balance;
     const usdt = new Contract(USDT, ERC20_ABI, signer);
     const usdtBalance = await usdt.balanceOf(signer.address);
 
@@ -317,58 +336,69 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
     console.log(`  USDT Balance: ${formatEther(usdtBalance)} USDT`);
     console.log("══════════════════════════════════════════════════════════════════\n");
 
-    if (balance < parseEther("0.01")) {
-      throw new Error("Signer 1 needs at least 0.01 BNB for gas");
+    if (balance < parseEther("0.03")) {
+      throw new Error("Signer 1 needs at least 0.03 BNB (gas + fund signer2)");
     }
-    if (usdtBalance < parseEther("5")) {
-      throw new Error("Signer 1 needs at least 5 USDT for test operations");
+    if (usdtBalance < parseEther("6")) {
+      throw new Error("Signer 1 needs at least 6 USDT (2 buy CTF + 3 supply + ~1 buffer for repay/interest)");
     }
   });
 
-  // ── Step 1: Deploy Contracts ────────────────────────────────────────────────
+  // ── Step 1: Connect to deployed contracts (or deploy fresh) ────────────────
 
-  it("Step 1 — Deploy Presage protocol contracts", async function () {
+  it("Step 1 — Load Presage protocol contracts", async function () {
     this.timeout(120_000);
 
-    // 1. WrapperFactory
-    const WrapperFactory = await ethers.getContractFactory("WrapperFactory", signer);
-    factory = await WrapperFactory.deploy();
-    await factory.waitForDeployment();
-    const factoryAddr = await factory.getAddress();
-    console.log(`    WrapperFactory : ${factoryAddr}`);
+    const allDeployed = DEPLOYED.wrapperFactory && DEPLOYED.priceHub && DEPLOYED.presage && DEPLOYED.safeBatchHelper;
 
-    // 2. PriceHub
-    const PriceHub = await ethers.getContractFactory("PriceHub", signer);
-    priceHub = await PriceHub.deploy(3600);
-    await priceHub.waitForDeployment();
-    const priceHubAddr = await priceHub.getAddress();
-    console.log(`    PriceHub       : ${priceHubAddr}`);
+    if (allDeployed) {
+      // Attach to pre-deployed contracts
+      factory = await ethers.getContractAt("WrapperFactory", DEPLOYED.wrapperFactory, signer);
+      priceHub = await ethers.getContractAt("PriceHub", DEPLOYED.priceHub, signer);
+      presage = await ethers.getContractAt("Presage", DEPLOYED.presage, signer);
+      batchHelper = await ethers.getContractAt("SafeBatchHelper", DEPLOYED.safeBatchHelper, signer);
 
-    // 3. FixedPriceAdapter
-    const FixedPriceAdapter = await ethers.getContractFactory("FixedPriceAdapter", signer);
-    const adapter = await FixedPriceAdapter.deploy();
-    await adapter.waitForDeployment();
-    const setTx = await priceHub.setDefaultAdapter(await adapter.getAddress());
-    await setTx.wait();
-    console.log(`    FixedPriceAdapter: ${await adapter.getAddress()} (set as default)`);
+      console.log(`    WrapperFactory : ${DEPLOYED.wrapperFactory}`);
+      console.log(`    PriceHub       : ${DEPLOYED.priceHub}`);
+      console.log(`    Presage        : ${DEPLOYED.presage}`);
+      console.log(`    SafeBatchHelper: ${DEPLOYED.safeBatchHelper}`);
+      console.log("    Attached to pre-deployed contracts");
+    } else {
+      // Deploy fresh
+      console.log("    DEPLOYED addresses not set — deploying fresh contracts...");
 
-    // 4. Presage
-    const Presage = await ethers.getContractFactory("Presage", signer);
-    presage = await Presage.deploy(MORPHO, factoryAddr, priceHubAddr, IRM);
-    await presage.waitForDeployment();
-    const presageAddr = await presage.getAddress();
-    console.log(`    Presage        : ${presageAddr}`);
+      const WrapperFactory = await ethers.getContractFactory("WrapperFactory", signer);
+      factory = await WrapperFactory.deploy();
+      await factory.waitForDeployment();
+      console.log(`    WrapperFactory : ${await factory.getAddress()}`);
 
-    // 5. SafeBatchHelper
-    const SafeBatchHelper = await ethers.getContractFactory("SafeBatchHelper", signer);
-    batchHelper = await SafeBatchHelper.deploy(presageAddr, MORPHO);
-    await batchHelper.waitForDeployment();
-    console.log(`    SafeBatchHelper: ${await batchHelper.getAddress()}`);
+      const PriceHub = await ethers.getContractFactory("PriceHub", signer);
+      priceHub = await PriceHub.deploy(3600);
+      await priceHub.waitForDeployment();
+      console.log(`    PriceHub       : ${await priceHub.getAddress()}`);
+
+      const FixedPriceAdapter = await ethers.getContractFactory("FixedPriceAdapter", signer);
+      const adapter = await FixedPriceAdapter.deploy();
+      await adapter.waitForDeployment();
+      const setTx = await priceHub.setDefaultAdapter(await adapter.getAddress());
+      await setTx.wait();
+      console.log(`    FixedPriceAdapter: ${await adapter.getAddress()} (set as default)`);
+
+      const Presage = await ethers.getContractFactory("Presage", signer);
+      presage = await Presage.deploy(MORPHO, await factory.getAddress(), await priceHub.getAddress(), IRM);
+      await presage.waitForDeployment();
+      console.log(`    Presage        : ${await presage.getAddress()}`);
+
+      const SafeBatchHelper = await ethers.getContractFactory("SafeBatchHelper", signer);
+      batchHelper = await SafeBatchHelper.deploy(await presage.getAddress(), MORPHO);
+      await batchHelper.waitForDeployment();
+      console.log(`    SafeBatchHelper: ${await batchHelper.getAddress()}`);
+    }
 
     // Verify ownership
     expect(await presage.owner()).to.equal(signer.address);
     expect(await priceHub.owner()).to.equal(signer.address);
-    console.log("    All contracts deployed and ownership verified");
+    console.log("    Ownership verified");
   });
 
   // ── Step 2: Authenticate with predict.fun ───────────────────────────────────
@@ -388,27 +418,11 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
   it("Step 3 — Set predict.fun exchange approvals", async function () {
     this.timeout(120_000);
 
-    let OrderBuilder: any, ChainId: any;
-    try {
-      const sdk = await import("@predictdotfun/sdk");
-      OrderBuilder = sdk.OrderBuilder;
-      ChainId = sdk.ChainId;
-    } catch {
-      console.log("    predict.fun SDK not found — skipping programmatic approvals");
-      console.log("    (Ensure approvals are set manually or via previous run)");
-      this.skip();
-      return;
-    }
-
-    try {
-      const builder = await OrderBuilder.make(ChainId.BnbMainnet, signer);
-      const result = await builder.setApprovals();
-      expect(result.success).to.be.true;
-      console.log(`    Approvals set (${result.transactions.length} txs)`);
-    } catch (e: any) {
-      console.log("    Programmatic approvals failed — continuing (may already be set)");
-      console.log(`    Reason: ${e.message?.slice(0, 100)}`);
-    }
+    const sdk = await import("@predictdotfun/sdk");
+    const builder = await sdk.OrderBuilder.make(sdk.ChainId.BnbMainnet, signer);
+    const result = await builder.setApprovals();
+    expect(result.success).to.be.true;
+    console.log(`    Approvals set (${result.transactions.length} txs)`);
   });
 
   // ── Step 4: Buy CTF tokens ──────────────────────────────────────────────────
@@ -425,25 +439,14 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
     console.log(`    negRisk: ${market.isNegRisk} | yieldBearing: ${market.isYieldBearing}`);
     console.log(`    Token ID: ${market.tokenId}`);
 
-    let OrderBuilder: any, ChainId: any, Side: any;
-    try {
-      const sdk = await import("@predictdotfun/sdk");
-      OrderBuilder = sdk.OrderBuilder;
-      ChainId = sdk.ChainId;
-      Side = sdk.Side;
-    } catch {
-      console.log("    predict.fun SDK not available — cannot place order");
-      this.skip();
-      return;
-    }
-
-    const builder = await OrderBuilder.make(ChainId.BnbMainnet, signer);
+    const sdk = await import("@predictdotfun/sdk");
+    const builder = await sdk.OrderBuilder.make(sdk.ChainId.BnbMainnet, signer);
     const bestAskPrice = market.book.asks[0][0];
     const pricePerShareWei = parseEther(bestAskPrice.toString());
     const quantityWei = (BUY_VALUE_WEI * parseEther("1")) / pricePerShareWei;
 
     const { pricePerShare, makerAmount, takerAmount } = builder.getLimitOrderAmounts({
-      side: Side.BUY,
+      side: sdk.Side.BUY,
       pricePerShareWei,
       quantityWei,
     });
@@ -451,7 +454,7 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
     console.log(`    bestAsk: ${bestAskPrice} | maker: ${formatEther(makerAmount)} | taker: ${formatEther(takerAmount)}`);
 
     const order = builder.buildOrder("LIMIT", {
-      side: Side.BUY,
+      side: sdk.Side.BUY,
       maker: signer.address,
       signer: signer.address,
       tokenId: market.tokenId,
@@ -516,8 +519,13 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
 
     const tx = await presage.openMarket(ctfPos, USDT, lltv, resolutionAt, decayDuration, decayCooldown);
     const receipt = await tx.wait();
+    trackGas("openMarket", receipt);
 
-    presageMarketId = 1n;
+    // Read market ID from the MarketOpened event (not hardcoded — safe if contracts already have markets)
+    const marketOpenedEvent = receipt.logs
+      .map((log: any) => { try { return presage.interface.parseLog(log); } catch { return null; } })
+      .find((e: any) => e?.name === "MarketOpened");
+    presageMarketId = marketOpenedEvent!.args.marketId;
     const marketData = await presage.getMarket(presageMarketId);
     morphoMarketId = computeMorphoId(marketData.morphoParams);
 
@@ -527,8 +535,6 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
     console.log(`    Oracle            : ${marketData.morphoParams.oracle}`);
     console.log(`    LLTV              : ${formatEther(marketData.morphoParams.lltv)} (${Number(formatEther(marketData.morphoParams.lltv)) * 100}%)`);
     console.log(`    Resolution        : ${new Date(Number(marketData.resolutionAt) * 1000).toISOString()}`);
-    console.log(`    Gas used          : ${receipt.gasUsed.toString()}`);
-
     expect(marketData.morphoParams.loanToken).to.equal(USDT);
     expect(marketData.morphoParams.collateralToken).to.not.equal(ethers.ZeroAddress);
   });
@@ -544,7 +550,7 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
     // Seed at $1.00 (FixedPriceAdapter default, but seedPrice is needed for the stub)
     const probability = parseEther("1");
     const tx = await priceHub.seedPrice(BigInt(acquiredTokenId), probability);
-    await tx.wait();
+    trackGas("seedPrice", await tx.wait());
 
     const priceData = await priceHub.prices(BigInt(acquiredTokenId));
     const decay = await priceHub.decayFactor(BigInt(acquiredTokenId));
@@ -575,7 +581,7 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
     // Supply
     const balBefore = await usdt.balanceOf(signer.address);
     const tx = await presage.supply(presageMarketId, supplyAmount);
-    await tx.wait();
+    trackGas("supply", await tx.wait());
     const balAfter = await usdt.balanceOf(signer.address);
 
     // Verify via Morpho
@@ -610,7 +616,7 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
 
     // Deposit
     const tx = await presage.depositCollateral(presageMarketId, depositAmount);
-    await tx.wait();
+    trackGas("depositCollateral", await tx.wait());
 
     // Verify collateral is in Morpho
     const morpho = new Contract(MORPHO, MORPHO_ABI, signer);
@@ -650,7 +656,7 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
     const balBefore = await usdt.balanceOf(signer.address);
 
     const tx = await presage.borrow(presageMarketId, borrowAmount);
-    await tx.wait();
+    trackGas("borrow", await tx.wait());
 
     const balAfter = await usdt.balanceOf(signer.address);
 
@@ -726,7 +732,7 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
     await approveTx.wait();
 
     const tx = await presage.repay(presageMarketId, repayAmount);
-    await tx.wait();
+    trackGas("repay", await tx.wait());
 
     const posAfter = await morpho.position(morphoMarketId, signer.address);
 
@@ -758,7 +764,7 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
     const ctfBalBefore = await ctf.balanceOf(signer.address, BigInt(acquiredTokenId));
 
     const tx = await presage.releaseCollateral(presageMarketId, releaseAmount);
-    await tx.wait();
+    trackGas("releaseCollateral", await tx.wait());
 
     const ctfBalAfter = await ctf.balanceOf(signer.address, BigInt(acquiredTokenId));
     const posAfter = await morpho.position(morphoMarketId, signer.address);
@@ -885,7 +891,7 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
     const safeBefore = await usdt.balanceOf(safeAddr);
 
     const execTx = await mockSafe.executeBatch(MULTI_SEND, payload);
-    await execTx.wait();
+    trackGas("Safe borrow batch", await execTx.wait());
 
     const safeAfter = await usdt.balanceOf(safeAddr);
 
@@ -958,7 +964,7 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
 
     // Execute
     const execTx = await mockSafe.executeBatch(MULTI_SEND, payload);
-    await execTx.wait();
+    trackGas("Safe repay batch", await execTx.wait());
 
     // Verify clean position
     const posAfter = await morpho.position(morphoMarketId, safeAddr);
@@ -1188,8 +1194,10 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
     const finalUSDT = await usdt.balanceOf(signer.address);
     const finalBNB = await ethers.provider.getBalance(signer.address);
 
+    const gasSpent = startBnbBalance - finalBNB;
     console.log(`  Final USDT     : ${formatEther(finalUSDT)}`);
     console.log(`  Final BNB      : ${formatEther(finalBNB)}`);
+    console.log(`  Gas spent      : ${formatEther(gasSpent)} BNB (${totalGasUsed.toString()} gas)`);
     console.log("══════════════════════════════════════════════════════════════════\n");
   });
 });

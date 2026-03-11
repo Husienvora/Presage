@@ -3,7 +3,15 @@
     "allow": [
       "Bash(grep:*)",
       "Bash(FORK_BNB=true MORPHO_BLUE=0x01b0Bd309AA75547f7a37Ad7B1219A898E67a83a IRM=0x7112D95cB5f6b13bF5F5B94a373bB3b2B381F979 npx hardhat:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(python:*)",
+      "WebSearch",
+      "Bash(cd F:/Yamata/Presage && node -e \"const {ethers} = require\\('ethers'\\); console.log\\(ethers.getAddress\\('0x8894e0a0c962cb723c1853ae70e6024ef2ebf0e3'\\)\\)\")",
+      "Bash(cd F:/Yamata/Presage && npx hardhat compile 2>&1)",
+      "Bash(cd F:/Yamata/Presage && npx hardhat test test/Presage.mainnet.test.ts --network hardhat 2>&1 | head -30)",
+      "Bash(cd F:/Yamata/Presage && FORK_BNB=true npx hardhat test test/Presage.fork.test.ts --network hardhat 2>&1)",
+      "Bash(cd F:/Yamata/Presage && npx hardhat test test/Presage.unit.test.ts --network hardhat 2>&1)",
+      "Bash(cd F:/Yamata/Presage && npx hardhat test test/Presage.mainnet.test.ts --network hardhat 2>&1)"
     ]
   }
 }

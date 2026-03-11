@@ -201,13 +201,22 @@ contract Presage is ERC1155Holder, IFlashUnwrapCallback, Ownable {
         WrappedCTF wrapper = WrappedCTF(m.morphoParams.collateralToken);
         IERC20 loan = IERC20(m.morphoParams.loanToken);
 
+        // Accrue interest first so share↔asset conversion is consistent
+        // with what morpho.liquidate() will use internally.
+        morpho.accrueInterest(m.morphoParams);
+
         (,,uint128 totalBorrowAssets, uint128 totalBorrowShares,,) = morpho.market(m.morphoParams.id());
         uint256 repayShares = repayAmount.toSharesDown(totalBorrowAssets, totalBorrowShares);
+        uint256 actualRepay = repayShares.toAssetsUp(totalBorrowAssets, totalBorrowShares);
 
-        loan.safeTransferFrom(msg.sender, address(this), repayAmount);
-        loan.forceApprove(address(morpho), repayAmount);
+        loan.safeTransferFrom(msg.sender, address(this), actualRepay);
+        loan.forceApprove(address(morpho), actualRepay);
         (uint256 seized, ) = morpho.liquidate(m.morphoParams, borrower, 0, repayShares, "");
         loan.forceApprove(address(morpho), 0);
+
+        // Refund dust if Morpho pulled less than transferred
+        uint256 dust = loan.balanceOf(address(this));
+        if (dust > 0) loan.safeTransfer(msg.sender, dust);
 
         wrapper.unwrap(seized);
         m.ctfPosition.ctf.safeTransferFrom(address(this), msg.sender, m.ctfPosition.positionId, seized, "");

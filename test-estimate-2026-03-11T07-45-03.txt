@@ -1,0 +1,69 @@
+PRESAGE PROTOCOL — TEST OPERATION COST ESTIMATE
+(Excludes protocol deployment — see estimate-deploy.ts)
+
+Date      : Wednesday, March 11, 2026
+Time      : 1:15:03 PM
+Network   : BNB Smart Chain (fork at block 85930791)
+Gas Price : 1.0 gwei
+Solidity  : 0.8.28 (optimizer 200 runs, cancun)
+
+────────────────────────────────────────────────────────────────────────
+  Operation                                    Gas Used       Cost (BNB)
+────────────────────────────────────────────────────────────────────────
+
+  ── EOA Lending & Borrowing ──
+  openMarket                                     802394       0.000802394 BNB
+  seedPrice                                       69931       0.000069931 BNB
+  USDT approve (supply)                           46206       0.000046206 BNB
+  supply                                         154985       0.000154985 BNB
+  CTF setApprovalForAll                           46184       0.000046184 BNB
+  depositCollateral                              231559       0.000231559 BNB
+  Morpho setAuthorization                         47250        0.00004725 BNB
+  borrow                                         142679       0.000142679 BNB
+  USDT approve (repay)                            46206       0.000046206 BNB
+  repay (partial)                                135333       0.000135333 BNB
+  releaseCollateral (partial)                    196570        0.00019657 BNB
+
+  ── Dual-Sig Safe Wallet ──
+  MockSafe deploy                                299585       0.000299585 BNB
+  CTF safeTransferFrom → Safe                     53942       0.000053942 BNB
+  Safe batch: approve+auth+deposit+borrow        327886       0.000327886 BNB
+  USDT transfer → Safe (top-up)                   34491       0.000034491 BNB
+  Safe batch: approve+repay+release (est.)       327886       0.000327886 BNB
+
+  ── Wrapping Integrity ──
+  USDT approve (full repay) (est.)                46206       0.000046206 BNB
+  repay (full remaining) (est.)                  135333       0.000135333 BNB
+  releaseCollateral (full remaining) (est.)      196570        0.00019657 BNB
+  CTF setApprovalForAll (wrapper)                 46184       0.000046184 BNB
+  wrap (CTF → wCTF ERC20)                         75560        0.00007556 BNB
+  wCTF transfer → signer2                         49483       0.000049483 BNB
+  unwrap (wCTF → CTF)                             71223       0.000071223 BNB
+  BNB transfer (fund signer2 gas)                 21000          0.000021 BNB
+────────────────────────────────────────────────────────────────────────
+  TOTAL                                         3604646       0.003604646 BNB
+────────────────────────────────────────────────────────────────────────
+
+  Per-Phase Breakdown
+  ───────────────────
+  EOA Lending & Borrowing                     53.2%
+  Dual-Sig Safe Wallet                        29.0%
+  Wrapping Integrity                          17.8%
+
+  USD Cost Estimates
+  ──────────────────
+  BNB = $300    →  $1.08
+  BNB = $400    →  $1.44
+  BNB = $500    →  $1.80
+  BNB = $600    →  $2.16
+  BNB = $700    →  $2.52
+
+  Notes
+  ─────
+  - Costs measured via Hardhat fork against live BNB chain state.
+  - Gas price reflects the fork's reported gasPrice at time of run.
+  - Uses MockCTF (not real predict.fun CTF) — gas should be comparable.
+  - Does NOT include protocol deployment (see estimate-deploy.ts).
+  - predict.fun exchange approvals (Step 3) not estimated — depends on SDK.
+  - predict.fun order (Step 4) is off-chain — no gas cost.
+  - Conditional transactions (top-ups, extra approvals) included.
