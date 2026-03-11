@@ -20,7 +20,17 @@
       "Bash(curl -s -X POST \"https://bnb-mainnet.g.alchemy.com/v2/8hz1GDI3VPHuK3AetlxCk\" -H \"Content-Type: application/json\" -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionReceipt\",\"params\":[\"0xc613a2f80e035b0f467ce6a6b8983ff6b02948198e08736051058a247228f3c6\"],\"id\":1}' | python3 -c \"import sys,json; r=json.load\\(sys.stdin\\)['result']; print\\(f'Status: {int\\(r[\\\\\"status\\\\\"],16\\)}'\\); print\\(f'Contract: {r[\\\\\"contractAddress\\\\\"]}'\\); print\\(f'Gas: {int\\(r[\\\\\"gasUsed\\\\\"],16\\)}'\\); print\\(f'Block: {int\\(r[\\\\\"blockNumber\\\\\"],16\\)}'\\)\")",
       "Bash(curl -s -X POST \"https://bnb-mainnet.g.alchemy.com/v2/8hz1GDI3VPHuK3AetlxCk\" -H \"Content-Type: application/json\" -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionReceipt\",\"params\":[\"0xc613a2f80e035b0f467ce6a6b8983ff6b02948198e08736051058a247228f3c6\"],\"id\":1}' | node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\).result;console.log\\('Status:',parseInt\\(r.status,16\\)\\);console.log\\('Contract:',r.contractAddress\\);console.log\\('Gas:',parseInt\\(r.gasUsed,16\\)\\);console.log\\('Block:',parseInt\\(r.blockNumber,16\\)\\)}\\)\")",
       "Bash(curl -s -X POST \"https://bnb-mainnet.g.alchemy.com/v2/8hz1GDI3VPHuK3AetlxCk\" -H \"Content-Type: application/json\" -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionReceipt\",\"params\":[\"0x09c2cca4bd0a36bf740dc0d93728233479d150b4b0cc30d2530ab5f8cc3f5df5\"],\"id\":1}' | node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\).result;console.log\\('Status:',parseInt\\(r.status,16\\)\\);console.log\\('Contract:',r.contractAddress\\);console.log\\('Gas:',parseInt\\(r.gasUsed,16\\)\\);console.log\\('Block:',parseInt\\(r.blockNumber,16\\)\\)}\\)\")",
-      "Bash(curl -s -X POST \"https://bnb-mainnet.g.alchemy.com/v2/8hz1GDI3VPHuK3AetlxCk\" -H \"Content-Type: application/json\" -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x00bBf8d5498657cCd2f6f06b1A702456aD9F81ad\",\"latest\"],\"id\":1}' | node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\).result;console.log\\('Balance:',parseInt\\(r,16\\)/1e18,'BNB'\\)}\\)\")"
+      "Bash(curl -s -X POST \"https://bnb-mainnet.g.alchemy.com/v2/8hz1GDI3VPHuK3AetlxCk\" -H \"Content-Type: application/json\" -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x00bBf8d5498657cCd2f6f06b1A702456aD9F81ad\",\"latest\"],\"id\":1}' | node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\).result;console.log\\('Balance:',parseInt\\(r,16\\)/1e18,'BNB'\\)}\\)\")",
+      "WebFetch(domain:docs.reclaimprotocol.org)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:reclaimprotocol.org)",
+      "WebFetch(domain:blog.reclaimprotocol.org)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:gitlab.reclaimprotocol.org)",
+      "WebFetch(domain:bscscan.com)",
+      "Bash(find F:/Yamata/Presage/node_modules -type d -name \"*reclaim*\" 2>/dev/null | head -20)",
+      "Bash(find F:/Yamata/Presage/node_modules/@reclaimprotocol -name \"*.sol\" 2>/dev/null | head -20)"
     ]
   }
 }
