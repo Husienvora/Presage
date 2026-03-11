@@ -1,5 +1,5 @@
 import { ethers, Contract, Signer, Provider, BigNumberish } from "ethers";
-import { PRESAGE_ABI, SAFE_BATCH_HELPER_ABI, ERC20_ABI, WRAPPER_FACTORY_ABI, MORPHO_ABI } from "./abis";
+import { PRESAGE_ABI, SAFE_BATCH_HELPER_ABI, ERC20_ABI, WRAPPER_FACTORY_ABI, MORPHO_ABI, PRICE_HUB_ABI, IRM_ABI } from "./abis";
 
 export interface PresageConfig {
   presageAddress: string;
@@ -16,6 +16,7 @@ export class PresageClient {
   public readonly factory: Contract;
   public readonly batchHelper: Contract;
   public readonly morpho: Contract;
+  private _priceHub?: Contract;
 
   constructor(config: PresageConfig) {
     this.config = config;
@@ -67,6 +68,97 @@ export class PresageClient {
     const debt = (BigInt(pos.borrowShares) * BigInt(mkt.totalBorrowAssets) + BigInt(mkt.totalBorrowShares) - 1n) / BigInt(mkt.totalBorrowShares);
     const buffer = (debt * BigInt(bufferBps)) / 10000n;
     return debt + buffer;
+  }
+
+  // ──────── Oracle & Prices ────────
+
+  /**
+   * Returns the PriceHub contract instance.
+   */
+  async getPriceHub(): Promise<Contract> {
+    if (this._priceHub) return this._priceHub;
+    const hubAddress = await this.presage.priceHub();
+    const runner = this.config.signer || this.config.provider;
+    this._priceHub = new Contract(hubAddress, PRICE_HUB_ABI, runner);
+    return this._priceHub;
+  }
+
+  /**
+   * Fetches the raw PricePoint (probability and timestamp) for a market from PriceHub.
+   */
+  async getPricePoint(marketId: BigNumberish) {
+    const { ctfPosition } = await this.getMarket(marketId);
+    const hub = await this.getPriceHub();
+    return hub.prices(ctfPosition.positionId);
+  }
+
+  /**
+   * Fetches the current price scaled for Morpho from PriceHub.
+   */
+  async getOraclePrice(marketId: BigNumberish) {
+    const { ctfPosition } = await this.getMarket(marketId);
+    const hub = await this.getPriceHub();
+    return hub.morphoPrice(ctfPosition.positionId);
+  }
+
+  /**
+   * Submits a price update proof to the PriceHub.
+   */
+  async updateOraclePrice(marketId: BigNumberish, proof: string) {
+    const { ctfPosition } = await this.getMarket(marketId);
+    const hub = await this.getPriceHub();
+    return hub.submitPrice(ctfPosition.positionId, proof);
+  }
+
+  // ──────── Interest Rates ────────
+
+  /**
+   * Fetches the current market utilization (0..1e18).
+   */
+  async getUtilization(marketId: BigNumberish): Promise<bigint> {
+    const { morphoParams } = await this.getMarket(marketId);
+    const mId = this.getMorphoMarketId(morphoParams);
+    const market = await this.morpho.market(mId);
+    
+    if (BigInt(market.totalSupplyAssets) === 0n) return 0n;
+    return (BigInt(market.totalBorrowAssets) * BigInt(1e18)) / BigInt(market.totalSupplyAssets);
+  }
+
+  /**
+   * Fetches the current Borrow APY for a market.
+   */
+  async getBorrowAPY(marketId: BigNumberish): Promise<number> {
+    const { morphoParams } = await this.getMarket(marketId);
+    const mId = this.getMorphoMarketId(morphoParams);
+    const market = await this.morpho.market(mId);
+    
+    const runner = this.config.signer || this.config.provider;
+    const irm = new Contract(morphoParams.irm, IRM_ABI, runner);
+    
+    const borrowRateWad = await irm.borrowRateView(morphoParams, market);
+    const SECONDS_PER_YEAR = 31536000n;
+    
+    // APR = rate * seconds_per_year
+    // APY = (1 + rate)^seconds_per_year - 1 (approx as APR for low rates, but let's be precise if possible)
+    // Most UIs use APR * 100 for simplicity or standard APY calculation.
+    return Number(borrowRateWad * SECONDS_PER_YEAR) / 1e18;
+  }
+
+  /**
+   * Fetches the current Supply APY for a market.
+   */
+  async getSupplyAPY(marketId: BigNumberish): Promise<number> {
+    const { morphoParams } = await this.getMarket(marketId);
+    const mId = this.getMorphoMarketId(morphoParams);
+    const market = await this.morpho.market(mId);
+    
+    const borrowAPY = await this.getBorrowAPY(marketId);
+    const utilization = BigInt(market.totalSupplyAssets) > 0n 
+      ? Number(BigInt(market.totalBorrowAssets) * BigInt(1e18) / BigInt(market.totalSupplyAssets)) / 1e18
+      : 0;
+    
+    const fee = Number(market.fee) / 1e18;
+    return borrowAPY * utilization * (1 - fee);
   }
 
   // ──────── Permissions (EOA Flow) ────────

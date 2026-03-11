@@ -6,7 +6,20 @@ export const PRESAGE_ABI = [
   "function supply(uint256 marketId, uint256 amount) external",
   "function withdraw(uint256 marketId, uint256 amount) external",
   "function getMarket(uint256 marketId) external view returns (tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) morphoParams, tuple(address ctf, bytes32 parentCollectionId, bytes32 conditionId, uint256 positionId, uint256 oppositePositionId) ctfPosition, uint256 resolutionAt)",
-  "function healthFactor(uint256 marketId, address borrower) external view returns (uint256)"
+  "function healthFactor(uint256 marketId, address borrower) external view returns (uint256)",
+  "function priceHub() external view returns (address)"
+];
+
+export const PRICE_HUB_ABI = [
+  "function prices(uint256 positionId) external view returns (uint256 price, uint256 updatedAt)",
+  "function morphoPrice(uint256 positionId) external view returns (uint256)",
+  "function submitPrice(uint256 positionId, bytes calldata proof) external",
+  "function configs(uint256 positionId) external view returns (uint256 positionId, uint256 resolutionAt, uint256 decayDuration, uint256 decayCooldown, uint8 loanDecimals, uint8 collateralDecimals)",
+  "function decayFactor(uint256 positionId) external view returns (uint256)"
+];
+
+export const IRM_ABI = [
+  "function borrowRateView(tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) marketParams, tuple(uint128 totalSupplyAssets, uint128 totalSupplyShares, uint128 totalBorrowAssets, uint128 totalBorrowShares, uint128 lastUpdate, uint128 fee) market) external view returns (uint256)"
 ];
 
 export const SAFE_BATCH_HELPER_ABI = [
