@@ -1,0 +1,10 @@
+{
+  "wrapperFactory": "0x8Aa2713b0657C87A73aca697C3f5cb29e31b1244",
+  "priceHub": "0xA0b5248b0Cf37B211C34FED77044984F1757835c",
+  "fixedPriceAdapter": "0x967bae51a567056de330ba22f169a4933e0047a1",
+  "presage": "0x4d2C98FF3349A71FD4756A3E5dBb987779Fbd48f",
+  "safeBatchHelper": "0x08Bf83988A1fb79F1278372eAB26cFAC40180713",
+  "deployer": "0x00bBf8d5498657cCd2f6f06b1A702456aD9F81ad",
+  "network": "56",
+  "timestamp": "2026-03-11T10:09:36.477Z"
+}

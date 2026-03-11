@@ -48,7 +48,35 @@ export class PresageClient {
     return this.presage.repay(marketId, amount);
   }
 
+  /**
+   * Helper to calculate the current full debt for a user in a specific market,
+   * including a recommended buffer (default 1%) to account for interest accrual
+   * between the time of calculation and transaction execution.
+   */
+  async getFullDebtWithBuffer(marketId: BigNumberish, user: string, bufferBps: number = 100) {
+    const { morphoParams } = await this.getMarket(marketId);
+    const mId = this.getMorphoMarketId(morphoParams);
+    
+    const [pos, mkt] = await Promise.all([
+      this.morpho.position(mId, user),
+      this.morpho.market(mId)
+    ]);
+
+    if (BigInt(mkt.totalBorrowShares) === 0n) return 0n;
+
+    const debt = (BigInt(pos.borrowShares) * BigInt(mkt.totalBorrowAssets) + BigInt(mkt.totalBorrowShares) - 1n) / BigInt(mkt.totalBorrowShares);
+    const buffer = (debt * BigInt(bufferBps)) / 10000n;
+    return debt + buffer;
+  }
+
   // ──────── Permissions (EOA Flow) ────────
+
+  /**
+   * Checks if the Presage Router is authorized on Morpho Blue for the user.
+   */
+  async isAuthorizedOnMorpho(user: string): Promise<boolean> {
+    return this.morpho.isAuthorized(user, this.config.presageAddress);
+  }
 
   /**
    * Approves the Presage Router to spend a specific amount of loan tokens (e.g. USDT).
@@ -170,6 +198,24 @@ export class PresageClient {
     amount: BigNumberish
   ): Promise<string> {
     return this.batchHelper.encodeSupply(marketId, loanToken, amount);
+  }
+
+  /**
+   * Generates a multiSend payload for a Gnosis Safe to fully repay debt and release collateral.
+   * Includes: USDT Approval + Repay + Release Collateral
+   */
+  async encodeFullRepayAndRelease(
+    marketId: BigNumberish,
+    loanToken: string,
+    repayAmount: BigNumberish,
+    releaseAmount: BigNumberish
+  ): Promise<string> {
+    return this.batchHelper.encodeRepayAndRelease(
+      marketId,
+      loanToken,
+      repayAmount,
+      releaseAmount
+    );
   }
 }
 

@@ -258,7 +258,23 @@ describeFn("Presage Integration (BNB Testnet + predict.fun)", function () {
         console.log(`  [2] Approvals set (${result.transactions.length} txs) ✓`);
     } catch (e: any) {
         console.log("  [2] Programmatic approvals failed (likely multicall provider issue)");
-        console.log("  [2] Continuing assuming approvals are already present...");
+        console.log("  [2] Proceeding with manual approvals...");
+        
+        const builder = await OrderBuilder.make(ChainId.BnbTestnet, signer);
+        const usdtAddr = await builder.contracts!.USDT.contract.getAddress();
+        const usdt = new Contract(usdtAddr, ERC20_ABI, signer);
+        
+        const exchanges = [
+            await builder.contracts!.CTF_EXCHANGE.contract.getAddress(),
+            await builder.contracts!.NEG_RISK_CTF_EXCHANGE.contract.getAddress(),
+            await builder.contracts!.YIELD_BEARING_CTF_EXCHANGE.contract.getAddress(),
+            await builder.contracts!.YIELD_BEARING_NEG_RISK_CTF_EXCHANGE.contract.getAddress(),
+        ];
+        
+        for (const exchange of exchanges) {
+            console.log(`  [2] Approving USDT for ${exchange}...`);
+            await (await usdt.approve(exchange, ethers.MaxUint256)).wait();
+        }
     }
   });
 

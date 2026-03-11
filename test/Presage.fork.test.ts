@@ -151,6 +151,53 @@ describe("Presage Fork Test (BNB Mainnet)", function () {
     console.log(`    Alice repaid: ${formatUnits(repayAmount, 18)} USDT`);
   });
 
+  it("should allow full repayment with a buffer (refunds dust)", async function () {
+    const marketId = 1n;
+    const market = await presage.getMarket(marketId);
+    const mp = market.morphoParams;
+    const mid = ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "address", "address", "address", "uint256"],
+        [mp.loanToken, mp.collateralToken, mp.oracle, mp.irm, mp.lltv]
+      )
+    );
+
+    const morpho = await ethers.getContractAt("IMorpho", MORPHO);
+    const usdt = await ethers.getContractAt("IERC20", USDT);
+    const aliceAddr = await alice.getAddress();
+    const pos = await morpho.position(mid, aliceAddr);
+    const mkt = await morpho.market(mid);
+
+    // Calculate actual debt
+    const debt = (BigInt(pos.borrowShares) * BigInt(mkt.totalBorrowAssets) + BigInt(mkt.totalBorrowShares) - 1n) / BigInt(mkt.totalBorrowShares);
+    
+    // Attempt full repayment with a buffer
+    const repayAmount = debt + parseUnits("1", 18); // $1 extra
+    await usdt.connect(alice).approve(await presage.getAddress(), repayAmount);
+
+    const balBefore = await usdt.balanceOf(aliceAddr);
+    await presage.connect(alice).repay(marketId, repayAmount);
+    const balAfter = await usdt.balanceOf(aliceAddr);
+
+    // Verify debt is gone
+    const posAfter = await morpho.position(mid, aliceAddr);
+    expect(posAfter.borrowShares).to.equal(0n);
+
+    // Verify exactly 'debt' (plus maybe some interest) was taken, and 'repayAmount - debt' was NOT fully taken if the buffer was large
+    // Actually, Morpho might take 'repayAmount' if assets=repayAmount and shares=0.
+    // BUT our code logic is:
+    // if (amount >= owed) { shares = borrowShares_; assets = 0; }
+    // If assets=0 and shares>0, Morpho takes EXACTLY what is needed for those shares.
+    // Then we refund the rest.
+    
+    const spent = balBefore - balAfter;
+    // 'spent' should be close to 'debt' (maybe a bit more due to interest), but definitely not 'repayAmount'
+    expect(spent).to.be.lt(repayAmount);
+    expect(spent).to.be.gte(debt);
+    
+    console.log(`    Alice repaid full debt. Spent: ${formatUnits(spent, 18)} USDT, Buffer: 1.0 USDT`);
+  });
+
   // ══════════════════════════════════════════════════════════════════════════════
   //  INTEREST ACCRUAL
   // ══════════════════════════════════════════════════════════════════════════════

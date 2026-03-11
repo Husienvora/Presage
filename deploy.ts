@@ -1,4 +1,5 @@
 import { ethers } from "hardhat";
+import fs from "fs";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -48,6 +49,20 @@ async function main() {
     const helper = await SafeBatchHelper.deploy(await presage.getAddress(), morphoAddr);
     await helper.waitForDeployment();
     console.log("SafeBatchHelper:", await helper.getAddress());
+
+    // Save addresses
+    const deployed = {
+      wrapperFactory: await factory.getAddress(),
+      priceHub: await priceHub.getAddress(),
+      fixedPriceAdapter: await fixedAdapter.getAddress(),
+      presage: await presage.getAddress(),
+      safeBatchHelper: await helper.getAddress(),
+      deployer: deployer.address,
+      network: (await ethers.provider.getNetwork()).chainId.toString(),
+      timestamp: new Date().toISOString(),
+    };
+    fs.writeFileSync("deployed-addresses.json", JSON.stringify(deployed, null, 2));
+    console.log("\nSaved to deployed-addresses.json");
   } else {
     console.log("\nSkipping Presage + SafeBatchHelper (set MORPHO_BLUE and IRM env vars)");
     console.log("Deployed WrapperFactory + PriceHub + FixedPriceAdapter only.");
