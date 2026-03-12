@@ -2,7 +2,7 @@
   "name": "presage-protocol",
   "version": "0.1.0",
   "description": "Borrow stablecoins against prediction market CTF tokens via Morpho Blue",
-  "license": "GPL-2.0",
+  "license": "UNLICENSED",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
