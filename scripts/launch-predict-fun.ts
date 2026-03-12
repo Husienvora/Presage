@@ -90,8 +90,16 @@ async function main() {
 
     if (priceHubAddr && !process.env.PULL_ADAPTER_ADDR) {
         console.log(`\n4. Registering adapter in PriceHub...`);
-        console.log(`   NOTE: You need to call priceHub.setAdapter(positionId, adapterAddress)`);
-        console.log(`   for each position that should use this adapter.`);
+        const hub = await ethers.getContractAt("PriceHub", priceHubAddr);
+        if (process.env.YES_POSITION_ID) {
+            const posId = BigInt(process.env.YES_POSITION_ID);
+            const tx = await hub.setAdapter(posId, adapterAddress);
+            await tx.wait();
+            console.log(`   Registered for position ${posId}`);
+        } else {
+            console.log(`   NOTE: Set YES_POSITION_ID to auto-register, or call manually:`);
+            console.log(`   priceHub.setAdapter(positionId, ${adapterAddress})`);
+        }
     }
 
     // ── 5. Submit initial signed price (if market params provided) ──

@@ -26,7 +26,7 @@ The Oracle is the most critical part of a prediction market. Presage uses a **re
 
 ### The PriceHub Flow
 1.  **PriceHub** manages the mapping of `PositionID -> IPriceAdapter`.
-2.  **Adapters** verify raw data (zkTLS proofs, signed API responses, or AMM prices).
+2.  **Adapters** verify raw data (signed relayer attestations, or future zkTLS proofs).
 3.  **MorphoOracleStub** is a lightweight contract that Morpho Blue calls. It asks the `PriceHub`: "What is the price of this Position ID?"
 
 ### Configuring for predict.fun

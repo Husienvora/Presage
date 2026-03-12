@@ -77,7 +77,7 @@ interface IPriceAdapter {
 ```
 
 1. **FixedPriceAdapter** ($1 fallback) — Every CTF token is priced at its maximum payout. Safe but capital inefficient.
-2. **PullPriceAdapter** (zkTLS) — Accepts externally-proven prices (e.g., from Polymarket API via Reclaim proofs).
+2. **PullPriceAdapter** (Signed Relayer) — Accepts externally-proven prices via `IProofVerifier` backends. Currently uses `SignedProofVerifier` (ECDSA-signed attestations from an authorized relayer fetching predict.fun's API over TLS 1.3). Designed for future upgrade to trustless zkTLS once providers mature.
 
 The `PriceHub` stores these adapters, checks for staleness, and spawns lightweight `MorphoOracleStub` contracts that Morpho recognizes as valid oracles.
 

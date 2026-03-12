@@ -71,17 +71,17 @@ await mySafe.executeBatch(MULTI_SEND_ADDRESS, payload);
 
 ---
 
-## 4. Oracle Architecture (TLS & Pull Oracles)
+## 4. Oracle Architecture (Signed Relayer + Pull Oracles)
 
-Presage uses a "Pull Oracle" model. The `PriceHub` spawns a `PullPriceAdapter` for each market.
+Presage uses a "Pull Oracle" model via `PullPriceAdapter` with pluggable `IProofVerifier` backends.
 
-### Update Workflow
-1. **Data Acquisition**: Fetch prediction market data (e.g., from predict.fun API) using a TLS-notarized client (like **TLSNotary** or **PADO**).
-2. **Proof Generation**: The TLS proof cryptographically binds the API response (e.g., `probability: 0.65`) to the server's identity.
-3. **Submission**:
-   - The verified probability is submitted to the `PullPriceAdapter`.
-   - The adapter updates the Morpho-compatible price feed.
-   - Morpho Blue automatically uses the new price for health factor checks.
+### Current Implementation: Signed Relayer
+1. **Data Acquisition**: An off-chain relayer bot fetches price data from predict.fun's HTTPS API (TLS 1.3).
+2. **Signing**: The relayer signs `keccak256(abi.encodePacked(timestamp, positionId, price))` with its authorized key.
+3. **Submission**: Anyone can submit the signed proof to `PullPriceAdapter.submitPrice()`. The `SignedProofVerifier` recovers the signer via ECDSA and validates it matches the authorized relayer.
+4. **Recording**: The adapter validates freshness and bounds, then forwards to `PriceHub.recordPrice()`. Morpho Blue automatically uses the new price for health factor checks.
+
+> **Note:** The `IProofVerifier` interface is designed for future upgrade to trustless zkTLS verification once protocols mature to support TLS 1.3. See `docs/oracle-strategy-report.md` for the full evaluation.
 
 ### Seeding
 Before a market is active, the creator must "seed" the initial price:

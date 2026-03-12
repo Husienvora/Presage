@@ -106,7 +106,7 @@ Because Presage uses **Isolated Markets** on Morpho Blue:
 The Presage admin/multisig has limited but important powers:
 
 1.  **Market Creation:** Choosing which prediction tokens to support and setting the initial parameters (LLTV, IRM, Resolution date).
-2.  **Price Feeds:** Selecting which "Adapters" (Signed Proofs, Reclaim, etc.) are trusted to provide prices for specific tokens.
+2.  **Price Feeds:** Selecting which "Adapters" (Signed Relayer, future zkTLS, etc.) are trusted to provide prices for specific tokens.
 3.  **Staleness Settings:** Deciding how "old" a price can be before the protocol stops allowing new borrows (to prevent trading on old news).
 
 ### Q: What is Immutable (Cannot be changed)?
