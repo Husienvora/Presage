@@ -32,6 +32,8 @@
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0",
     "@predictdotfun/sdk": "^1.3.0",
-    "@reclaimprotocol/verifier-solidity-sdk": "^1.0.4"
+    "@reclaimprotocol/js-sdk": "^4.15.0",
+    "@reclaimprotocol/verifier-solidity-sdk": "^1.0.4",
+    "@reclaimprotocol/zk-fetch": "^0.8.0"
   }
 }

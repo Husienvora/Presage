@@ -10,7 +10,7 @@
 
 Presage requires a price oracle to feed prediction market probabilities from predict.fun into its on-chain lending markets on BNB Chain. The ideal solution would use **zkTLS** (zero-knowledge Transport Layer Security) to cryptographically prove that price data originated from predict.fun's HTTPS endpoint — eliminating any trusted intermediary.
 
-After evaluating every viable zkTLS provider in the ecosystem, we conclude that **no zkTLS protocol is production-ready for our use case today**. The primary blockers are TLS 1.3 incompatibility and protocol immaturity. Our current implementation — a signed relayer architecture with a pluggable verifier interface — is the correct production solution and is already designed for trustless upgrade when the ecosystem matures.
+After evaluating every viable zkTLS provider in the ecosystem, we conclude that **Reclaim Protocol is the only zkTLS solution viable for our use case today** — its `zk-fetch` library supports TLS 1.3, works with JSON API endpoints, and has a production on-chain verifier on BNB Chain. We successfully generated and verified a proof from predict.fun's orderbook API. However, Reclaim carries operational fragility . Our production architecture uses a **signed relayer as the primary oracle** with Reclaim as an authorized secondary verifier, providing both reliability and a path toward trustlessness.
 
 ---
 
@@ -48,17 +48,17 @@ TLS 1.3 introduced fundamental changes (encrypted handshake, ephemeral-only keys
 
 ### 3.1 Provider Comparison
 
-| Provider | TLS 1.2 (works today) | TLS 1.3 | Custom Endpoints | On-Chain Verifier | Automated | Primary Blocker |
-|---|---|---|---|---|---|---|
-| **TLSNotary** | Yes | No | Yes | **In development** | Yes | No Solidity verifier |
-| **Reclaim** | N/A (scraping) | N/A | No | Yes | No | Scraping-based, not API-compatible |
-| **zkPass** | Yes | Unconfirmed | Yes | Yes | **No (browser)** | Requires browser extension |
-| **Primus** | Yes | Likely | Yes (templates) | Yes | Partial | **AlphaNet** — not production |
-| **Brevis + APRO** | N/A | N/A | Yes | Yes (ZK coprocessor) | Yes | **No zkTLS SDK** (outsourced to Primus) |
-| **Opacity** | Yes | No | No (accounts only) | Yes | No | Account attestation only |
-| **Pluto** | Unconfirmed | Unconfirmed | Yes | Unconfirmed | Unconfirmed | Too early-stage |
+| Provider          | TLS 1.2 (works today) | TLS 1.3     | Custom Endpoints   | On-Chain Verifier    | Automated        | Primary Blocker                          |
+| ----------------- | --------------------- | ----------- | ------------------ | -------------------- | ---------------- | ---------------------------------------- |
+| **TLSNotary**     | Yes                   | No          | Yes                | **In development**   | Yes              | No Solidity verifier                     |
+| **Reclaim**       | Yes                   | **Yes**     | **Yes** (zk-fetch) | **Yes** (BNB)        | **Yes**          | Operational fragility (3-party TLS dep.) |
+| **zkPass**        | Yes                   | Unconfirmed | Yes                | Yes                  | **No (browser)** | Requires browser extension               |
+| **Primus**        | Yes                   | Likely      | Yes (templates)    | Yes                  | Partial          | **AlphaNet** — not production            |
+| **Brevis + APRO** | N/A                   | N/A         | Yes                | Yes (ZK coprocessor) | Yes              | **No zkTLS SDK** (outsourced to Primus)  |
+| **Opacity**       | Yes                   | No          | No (accounts only) | Yes                  | No               | Account attestation only                 |
+| **Pluto**         | Unconfirmed           | Unconfirmed | Yes                | Unconfirmed          | Unconfirmed      | Too early-stage                          |
 
-> **Note:** predict.fun supports TLS 1.2 today, so TLS version is not the immediate blocker. The **primary blocker** for each protocol is listed in the last column. However, dependence on TLS 1.2 remains a forward-looking risk (see Section 2.2).
+> **Note:** predict.fun supports both TLS 1.2 and 1.3. **Reclaim Protocol is the only provider that is viable today** — it supports TLS 1.3, works with JSON API endpoints, and has a production on-chain verifier. All other protocols have independent maturity blockers listed in the last column.
 
 ### 3.2 Detailed Provider Analysis
 
@@ -67,15 +67,20 @@ TLS 1.3 introduced fundamental changes (encrypted handshake, ephemeral-only keys
 - **What it does**: MPC-TLS protocol using garbled circuits and oblivious transfer. A Verifier co-participates in the TLS handshake via 2-party computation.
 - **TLS**: Supports TLS 1.2 only. predict.fun accepts TLS 1.2, so connections work today. TLS 1.3 support is "on the roadmap" but no timeline given.
 - **Strengths**: Fully open source (Ethereum Foundation grant), endpoint-agnostic, Rust SDK enables server-side automation.
-- **Weaknesses**: No production Solidity verifier contract (the critical blocker), high bandwidth overhead (~25MB per session). Their GitHub repository carries the warning: *"This project is currently under active development and should not be used in production. Expect bugs and regular major breaking changes."*
+- **Weaknesses**: No production Solidity verifier contract (the critical blocker), high bandwidth overhead (~25MB per session). Their GitHub repository carries the warning: _"This project is currently under active development and should not be used in production. Expect bugs and regular major breaking changes."_
 - **Verdict**: Architecturally the closest to viable, but explicitly not production-ready by their own admission. Two blockers remain: the Solidity verifier and the project reaching stability.
 
-#### Reclaim Protocol
+#### Reclaim Protocol (**Viable — Deployed as Secondary Verifier**)
 
-- **What it does**: Proxy-based web proof system with pre-configured "providers" for specific websites.
-- **TLS 1.3**: Not applicable — Reclaim works by **scraping rendered web pages**, not by participating in the TLS handshake. Providers are defined by HTML selectors and page structure.
-- **Why it doesn't work for us**: We investigated Reclaim directly. Their provider model requires defining data extraction rules based on DOM scraping of specific web pages. predict.fun's price data comes from a JSON API endpoint, not a rendered webpage. Defining a Reclaim provider for a raw API response is unsupported by their architecture. Additionally, provider definitions are brittle — any frontend redesign by predict.fun would break the provider.
-- **Verdict**: Wrong tool for API-based data. Designed for user-facing web pages, not programmatic endpoints.
+- **What it does**: Witness-based web proof system. The `@reclaimprotocol/zk-fetch` npm package generates verifiable proofs of HTTP responses by having Reclaim's witness network observe the TLS session and sign attestations.
+- **TLS 1.3**: **Supported.** zk-fetch uses standard HTTPS and supports TLS 1.3 connections. Successfully tested against predict.fun's API (which uses TLS 1.2/1.3 via CDN77).
+- **Custom endpoints**: **Yes.** zk-fetch supports arbitrary URL fetching with regex-based data extraction from JSON responses. Not limited to scraping — works natively with JSON APIs.
+- **On-chain verifier**: **Yes.** Reclaim singleton deployed on BNB mainnet at `0x5917FaB4808A119560dfADc14F437ae1455AEd40`. Verifies witness signatures and epoch validity.
+- **Automation**: **Yes.** zk-fetch is a Node.js library — fully automatable from a server-side process. No browser required.
+- **Verified PoC**: We successfully generated a proof from `https://api.predict.fun/v1/markets/900/orderbook` using zk-fetch with regex extraction of `lastOrderSettled.price`. The proof was verified both off-chain (`verifyProof()`) and transformed for on-chain submission (`transformForOnchain()`). See `scripts/reclaim-proof-test.ts`.
+- **Fragility risk**: Reclaim's witnesses must negotiate TLS directly with the data source. If the data source updates its TLS configuration in a way the witnesses can't handle, proofs stop generating with no on-chain fix.
+- **Our integration**: `ReclaimVerifier.sol` is deployed as a platform-agnostic verifier with endpoint whitelisting and `(endpoint, marketId) → positionId` mapping. It is authorized alongside `SignedProofVerifier` in `PullPriceAdapter`, so either verifier can submit prices. The signed relayer serves as the reliable primary; Reclaim provides a trustless secondary path.
+- **Verdict**: **Viable today as a secondary verifier.** Not suitable as the sole oracle due to the possibility of fragility . The dual-verifier architecture (signed relayer + Reclaim) provides both operational reliability and a path toward full trustlessness.
 
 #### zkPass
 
@@ -126,22 +131,28 @@ TLS 1.3 introduced fundamental changes (encrypted handshake, ephemeral-only keys
 
 ### 4.1 Architecture Overview
 
-Our current oracle architecture uses a **signed relayer** pattern:
+Our oracle architecture uses a **dual-verifier** pattern — signed relayer (primary) + Reclaim zkTLS (secondary):
 
 ```
-predict.fun API (TLS 1.3)
+predict.fun API (TLS 1.2/1.3)
         |
-   [Relayer Bot]          ← Off-chain: fetches price, signs attestation
-        |
+   ┌────┴────┐
+   |         |
+[Relayer]  [zk-fetch Microservice]
+   |         |
+   v         v
+SignedProof  ReclaimVerifier.sol ← On-chain: Reclaim singleton verification,
+Verifier.sol                       endpoint whitelist, position mapping
+   |         |
+   └────┬────┘
         v
-SignedProofVerifier.sol   ← On-chain: ECDSA recovery, checks signer == authorized relayer
-        |
-        v
-PullPriceAdapter.sol      ← On-chain: validates freshness, bounds, caches price
+PullPriceAdapter.sol      ← On-chain: multiple verifiers authorized, validates freshness/bounds
         |
         v
 PriceHub.sol              ← On-chain: stores price, applies LLTV decay, feeds Morpho oracle
 ```
+
+Either verifier path can submit valid prices. The signed relayer provides reliability; Reclaim provides trustless verification. If Reclaim's witnesses fail , the signed relayer continues operating. If the relayer key is compromised, Reclaim proofs still anchor the price to real API data.
 
 ### 4.2 Why This Is the Right Choice Today
 
@@ -152,6 +163,7 @@ PriceHub.sol              ← On-chain: stores price, applies LLTV decay, feeds 
 **Battle-tested pattern**: This is the same architecture used by Chainlink (off-chain nodes sign price reports), Pyth (publishers sign price attestations), and RedStone (data packages with ECDSA signatures). Every major oracle network in production today uses a variant of signed relayer.
 
 **Defense in depth**: Multiple safety layers protect against relayer compromise:
+
 - `PullPriceAdapter`: monotonic timestamp guard (`ts > cache.updatedAt`) prevents replay
 - `PullPriceAdapter`: probability bounds check (`prob <= 1e18`)
 - `PriceHub`: `maxStaleness` parameter freezes markets if the relayer goes offline (fail-safe)
@@ -183,41 +195,21 @@ This is an acceptable trust tradeoff for launch. Every DeFi protocol that went t
 
 ---
 
-## 5. Migration Path to Trustless Oracle
+## 5. Migration Path to Fully Trustless Oracle
 
-When a zkTLS protocol matures to production readiness, the migration is minimal due to the pluggable architecture:
+Reclaim is already deployed as a secondary verifier. The path to a fully trustless oracle:
 
-### Step 1: Deploy a New Verifier Contract
+### Current State: Dual Verifier (Signed Relayer + Reclaim)
 
-Write a contract implementing `IProofVerifier` that wraps the zkTLS provider's verification logic:
+Both `SignedProofVerifier` and `ReclaimVerifier` are authorized in `PullPriceAdapter`. Either can submit valid prices. The signed relayer provides reliability; Reclaim provides trustless verification.
 
-```solidity
-contract ZkTlsProofVerifier is IProofVerifier {
-    function verify(bytes calldata proof)
-        external view
-        returns (uint256 timestamp, uint256 positionId, uint256 price)
-    {
-        // Decode and verify the zkTLS proof using the provider's on-chain verifier
-        // Extract timestamp, positionId, and price from the verified payload
-    }
-}
-```
+### Step 1: Validate in Parallel
 
-### Step 2: Register the New Verifier
+Run both systems simultaneously. Compare prices submitted by the signed relayer against prices submitted via Reclaim proofs. Confirm they agree within acceptable tolerance over a sustained period. Monitor Reclaim witness reliability and proof generation latency.
 
-```solidity
-pullPriceAdapter.setVerifier(address(zkTlsVerifier), true);
-```
+### Step 2: Deprecate the Signed Relayer
 
-At this point, **both** the signed relayer and the zkTLS verifier are active. Either can submit valid prices. This enables a parallel-run period for validation.
-
-### Step 3: Validate in Parallel
-
-Run both systems simultaneously. Compare prices submitted by the signed relayer against prices submitted via zkTLS proofs. Confirm they agree within acceptable tolerance over a sustained period.
-
-### Step 4: Deprecate the Signed Relayer
-
-Once confidence is established:
+Once Reclaim (or another zkTLS provider) demonstrates sustained reliability:
 
 ```solidity
 pullPriceAdapter.setVerifier(address(signedProofVerifier), false);
@@ -225,53 +217,69 @@ pullPriceAdapter.setVerifier(address(signedProofVerifier), false);
 
 The signed relayer is disabled. The oracle is now fully trustless.
 
-### Step 5: Update Price Submission Flow
+### Step 3: Permissionless Submission
 
-Replace the relayer bot with a permissionless system:
-- Anyone can fetch predict.fun's price, generate a zkTLS proof, and submit it on-chain
+Replace the centralized zk-fetch microservice with a permissionless system:
+
+- Anyone can fetch the prediction market price, generate a zk-fetch proof, and submit it on-chain
 - Incentivize submissions via keeper rewards or integrate with existing keeper networks
 - The `PullPriceAdapter` validates the proof regardless of who submitted it
+
+### Adding Future zkTLS Providers
+
+When additional providers mature (e.g., Primus, TLSNotary), deploy a new `IProofVerifier` and register it:
+
+```solidity
+pullPriceAdapter.setVerifier(address(newZkTlsVerifier), true);
+```
+
+No changes to `PullPriceAdapter`, `PriceHub`, `Presage`, or any downstream contract.
 
 ---
 
 ## 6. Protocols to Monitor
 
-### Tier 1 — Track Actively
+### Tier 1 — Actively Deployed or Tracked
 
-| Protocol | Watch For | Why |
-|---|---|---|
-| **Primus** | Mainnet launch (exit AlphaNet), explicit TLS 1.3 confirmation | Most complete SDK and on-chain verifier today. Closest to production. |
-| **Brevis + APRO** | Public zkTLS SDK release, prediction market oracle availability | Building exactly our use case on BNB Chain, but dependent on Primus for TLS proofs. |
+| Protocol          | Status                                                      | Watch For                                                                                            |
+| ----------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **Reclaim**       | **Deployed** as secondary verifier alongside signed relayer | Witness network reliability improvements, reduced TLS fragility, expanded chain support              |
+| **Primus**        | Tracking                                                    | Mainnet launch (exit AlphaNet), explicit TLS 1.3 confirmation. Most complete alternative SDK.        |
+| **Brevis + APRO** | Tracking                                                    | Public zkTLS SDK release, prediction market oracle availability. Dependent on Primus for TLS proofs. |
 
 ### Tier 2 — Check Quarterly
 
-| Protocol | Watch For | Why |
-|---|---|---|
-| **TLSNotary** | TLS 1.3 support, Solidity verifier contract | Best open-source foundation. Once these two ship, it becomes a strong candidate. |
-| **Pluto** | Production launch, on-chain verifier, BNB Chain support | Right positioning ("API for any internet data") but too early today. |
+| Protocol      | Watch For                                               | Why                                                                              |
+| ------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| **TLSNotary** | TLS 1.3 support, Solidity verifier contract             | Best open-source foundation. Once these two ship, it becomes a strong candidate. |
+| **Pluto**     | Production launch, on-chain verifier, BNB Chain support | Right positioning ("API for any internet data") but too early today.             |
 
 ### Tier 3 — Revisit if Landscape Shifts
 
-| Protocol | Note |
-|---|---|
-| **zkPass** | Only relevant if they release a server-side SDK (no browser extension). |
-| **Opacity** | Only relevant if they expand beyond account attestation to arbitrary API data. |
+| Protocol      | Note                                                                            |
+| ------------- | ------------------------------------------------------------------------------- |
+| **zkPass**    | Only relevant if they release a server-side SDK (no browser extension).         |
+| **Opacity**   | Only relevant if they expand beyond account attestation to arbitrary API data.  |
 | **OpenLayer** | Insufficient documentation to evaluate. Revisit if they publish developer docs. |
 
 ---
 
 ## 7. Conclusion
 
-The zkTLS ecosystem is not ready for production use in DeFi oracles. While predict.fun supports TLS 1.2 today (removing the immediate TLS version blocker), every evaluated protocol has independent maturity issues that prevent production adoption: TLSNotary lacks an on-chain verifier, zkPass requires a browser extension, Primus is in AlphaNet, and Brevis has no zkTLS SDK. Building on TLS 1.2 also carries forward-looking deprecation risk.
+**Reclaim Protocol is viable today** — we verified this by generating and verifying a proof from predict.fun's orderbook API using `zk-fetch`. It supports TLS 1.3, works with JSON endpoints, and has a production on-chain verifier on BNB Chain. However
 
-Our signed relayer architecture is:
-- **Compatible** with TLS 1.3 (and any future TLS version)
-- **Production-proven** (same pattern as Chainlink, Pyth, RedStone)
-- **Future-proofed** via the `IProofVerifier` interface for drop-in zkTLS upgrade
-- **Safe by default** (staleness limits, bounds checks, decay curves)
+The remaining zkTLS providers are not production-ready: TLSNotary lacks an on-chain verifier and explicitly warns against production use, zkPass requires a browser extension, Primus is in AlphaNet, and Brevis has no zkTLS SDK.
 
-When the ecosystem matures — most likely through Primus reaching mainnet — the migration requires deploying one contract and calling one function. No changes to `PullPriceAdapter`, `PriceHub`, `Presage`, or any downstream contract.
+Our **dual-verifier architecture** is:
+
+- **Reliable** — signed relayer operates independently of witness network health
+- **Trustless-capable** — Reclaim verifier provides cryptographic proof of API data
+- **Resilient** — either path can serve prices; failure of one doesn't freeze the protocol
+- **Production-proven** — signed relayer follows the Chainlink/Pyth/RedStone pattern
+- **Safe by default** — staleness limits, bounds checks, decay curves
+
+The `ReclaimVerifier` is deployed as a platform-agnostic contract with endpoint whitelisting, supporting multiple prediction markets from a single instance. As the zkTLS ecosystem matures — particularly Primus reaching mainnet or TLSNotary shipping a Solidity verifier — additional verifiers can be added via `pullPriceAdapter.setVerifier()` with zero changes to downstream contracts.
 
 ---
 
-*This report reflects the state of the zkTLS ecosystem as of March 2026. The space is evolving rapidly and should be reassessed quarterly.*
+_This report reflects the state of the zkTLS ecosystem as of March 2026. The space is evolving rapidly and should be reassessed quarterly._
