@@ -5,9 +5,13 @@ export const PRESAGE_ABI = [
   "function repay(uint256 marketId, uint256 amount) external",
   "function supply(uint256 marketId, uint256 amount) external",
   "function withdraw(uint256 marketId, uint256 amount) external",
-  "function getMarket(uint256 marketId) external view returns (tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) morphoParams, tuple(address ctf, bytes32 parentCollectionId, bytes32 conditionId, uint256 positionId, uint256 oppositePositionId) ctfPosition, uint256 resolutionAt)",
+  "function getMarket(uint256 marketId) external view returns (tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) morphoParams, tuple(address ctf, bytes32 parentCollectionId, bytes32 conditionId, uint256 positionId, uint256 oppositePositionId) ctfPosition, uint256 resolutionAt, uint256 originationFeeBps, uint256 liquidationFeeBps)",
   "function healthFactor(uint256 marketId, address borrower) external view returns (uint256)",
-  "function priceHub() external view returns (address)"
+  "function priceHub() external view returns (address)",
+  "function treasury() external view returns (address)",
+  "function defaultOriginationFeeBps() external view returns (uint256)",
+  "function defaultLiquidationFeeBps() external view returns (uint256)",
+  "function BPS() external view returns (uint256)"
 ];
 
 export const PRICE_HUB_ABI = [

@@ -34,6 +34,12 @@ contract Presage is ERC1155Holder, IFlashUnwrapCallback, Ownable {
     PriceHub public immutable priceHub;
     address public immutable irm;
 
+    // ──────── Fee Constants ────────
+
+    uint256 public constant BPS = 10_000;
+    uint256 public constant MAX_ORIGINATION_FEE_BPS = 500;   // 5% cap
+    uint256 public constant MAX_LIQUIDATION_FEE_BPS = 2000;  // 20% cap
+
     // ──────── Types ────────
 
     struct CTFPosition {
@@ -48,12 +54,20 @@ contract Presage is ERC1155Holder, IFlashUnwrapCallback, Ownable {
         MarketParams morphoParams;
         CTFPosition ctfPosition;
         uint256 resolutionAt;
+        uint256 originationFeeBps;
+        uint256 liquidationFeeBps;
     }
 
     // ──────── State ────────
 
     uint256 public nextMarketId = 1;
     mapping(uint256 => LendingMarket) internal _markets;
+
+    // ──────── Fee State ────────
+
+    address public treasury;
+    uint256 public defaultOriginationFeeBps;
+    uint256 public defaultLiquidationFeeBps;
 
     // ──────── Events ────────
 
@@ -66,12 +80,46 @@ contract Presage is ERC1155Holder, IFlashUnwrapCallback, Ownable {
     event LoanRepaid(uint256 indexed marketId, address indexed borrower, uint256 amount);
     event SettledWithLoanToken(uint256 indexed marketId, address indexed borrower, address liquidator, uint256 repaid, uint256 seized);
     event SettledWithMerge(uint256 indexed marketId, address indexed borrower, address liquidator, uint256 merged, uint256 profit);
+    event TreasurySet(address indexed treasury);
+    event DefaultOriginationFeeSet(uint256 feeBps);
+    event DefaultLiquidationFeeSet(uint256 feeBps);
+    event MarketFeesSet(uint256 indexed marketId, uint256 originationFeeBps, uint256 liquidationFeeBps);
+    event OriginationFeeCollected(uint256 indexed marketId, address indexed borrower, uint256 fee);
+    event LiquidationFeeCollected(uint256 indexed marketId, uint256 fee);
 
     constructor(IMorpho morpho_, WrapperFactory factory_, PriceHub priceHub_, address irm_) Ownable(msg.sender) {
         morpho = morpho_;
         factory = factory_;
         priceHub = priceHub_;
         irm = irm_;
+    }
+
+    // ═══════════════ FEE ADMIN ═══════════════
+
+    function setTreasury(address treasury_) external onlyOwner {
+        require(treasury_ != address(0), "zero address");
+        treasury = treasury_;
+        emit TreasurySet(treasury_);
+    }
+
+    function setDefaultOriginationFee(uint256 feeBps) external onlyOwner {
+        require(feeBps <= MAX_ORIGINATION_FEE_BPS, "exceeds cap");
+        defaultOriginationFeeBps = feeBps;
+        emit DefaultOriginationFeeSet(feeBps);
+    }
+
+    function setDefaultLiquidationFee(uint256 feeBps) external onlyOwner {
+        require(feeBps <= MAX_LIQUIDATION_FEE_BPS, "exceeds cap");
+        defaultLiquidationFeeBps = feeBps;
+        emit DefaultLiquidationFeeSet(feeBps);
+    }
+
+    function setMarketFees(uint256 marketId, uint256 originationFeeBps_, uint256 liquidationFeeBps_) external onlyOwner {
+        require(originationFeeBps_ <= MAX_ORIGINATION_FEE_BPS, "exceeds cap");
+        require(liquidationFeeBps_ <= MAX_LIQUIDATION_FEE_BPS, "exceeds cap");
+        _markets[marketId].originationFeeBps = originationFeeBps_;
+        _markets[marketId].liquidationFeeBps = liquidationFeeBps_;
+        emit MarketFeesSet(marketId, originationFeeBps_, liquidationFeeBps_);
     }
 
     // ═══════════════ MARKET CREATION ═══════════════
@@ -107,7 +155,13 @@ contract Presage is ERC1155Holder, IFlashUnwrapCallback, Ownable {
         morpho.createMarket(mp);
 
         marketId = nextMarketId++;
-        _markets[marketId] = LendingMarket({ morphoParams: mp, ctfPosition: ctfPos, resolutionAt: resolutionAt });
+        _markets[marketId] = LendingMarket({
+            morphoParams: mp,
+            ctfPosition: ctfPos,
+            resolutionAt: resolutionAt,
+            originationFeeBps: defaultOriginationFeeBps,
+            liquidationFeeBps: defaultLiquidationFeeBps
+        });
 
         emit MarketOpened(marketId, loanToken, wrapper, ctfPos.positionId, resolutionAt);
     }
@@ -160,8 +214,20 @@ contract Presage is ERC1155Holder, IFlashUnwrapCallback, Ownable {
     // ═══════════════ BORROW / REPAY ═══════════════
 
     function borrow(uint256 marketId, uint256 amount) external {
-        morpho.borrow(_markets[marketId].morphoParams, amount, 0, msg.sender, msg.sender);
+        LendingMarket memory m = _markets[marketId];
+        IERC20 loan = IERC20(m.morphoParams.loanToken);
+
+        morpho.borrow(m.morphoParams, amount, 0, msg.sender, address(this));
+
+        uint256 fee;
+        if (m.originationFeeBps > 0 && treasury != address(0)) {
+            fee = (amount * m.originationFeeBps) / BPS;
+            loan.safeTransfer(treasury, fee);
+        }
+        loan.safeTransfer(msg.sender, amount - fee);
+
         emit LoanTaken(marketId, msg.sender, amount);
+        if (fee > 0) emit OriginationFeeCollected(marketId, msg.sender, fee);
     }
 
     function repay(uint256 marketId, uint256 amount) external {
@@ -221,10 +287,18 @@ contract Presage is ERC1155Holder, IFlashUnwrapCallback, Ownable {
         uint256 dust = loan.balanceOf(address(this));
         if (dust > 0) loan.safeTransfer(msg.sender, dust);
 
-        wrapper.unwrap(seized);
-        m.ctfPosition.ctf.safeTransferFrom(address(this), msg.sender, m.ctfPosition.positionId, seized, "");
+        uint256 fee;
+        if (m.liquidationFeeBps > 0 && treasury != address(0)) {
+            fee = (seized * m.liquidationFeeBps) / BPS;
+            wrapper.safeTransfer(treasury, fee);
+        }
+
+        uint256 net = seized - fee;
+        wrapper.unwrap(net);
+        m.ctfPosition.ctf.safeTransferFrom(address(this), msg.sender, m.ctfPosition.positionId, net, "");
 
         emit SettledWithLoanToken(marketId, borrower, msg.sender, repayAmount, seized);
+        if (fee > 0) emit LiquidationFeeCollected(marketId, fee);
     }
 
     function settleWithMerge(uint256 marketId, address borrower, uint256 seizeAmount) external {
@@ -259,9 +333,15 @@ contract Presage is ERC1155Holder, IFlashUnwrapCallback, Ownable {
         require(seized == amount, "seize mismatch");
 
         uint256 profit = amount - repayAmount;
-        loan.safeTransfer(liquidator, profit);
+        uint256 fee;
+        if (m.liquidationFeeBps > 0 && treasury != address(0) && profit > 0) {
+            fee = (profit * m.liquidationFeeBps) / BPS;
+            loan.safeTransfer(treasury, fee);
+        }
+        loan.safeTransfer(liquidator, profit - fee);
 
         emit SettledWithMerge(marketId, borrower, liquidator, amount, profit);
+        if (fee > 0) emit LiquidationFeeCollected(marketId, fee);
     }
 
     // ═══════════════ VIEW ═══════════════
@@ -269,10 +349,12 @@ contract Presage is ERC1155Holder, IFlashUnwrapCallback, Ownable {
     function getMarket(uint256 marketId) external view returns (
         MarketParams memory morphoParams,
         CTFPosition memory ctfPosition,
-        uint256 resolutionAt
+        uint256 resolutionAt,
+        uint256 originationFeeBps_,
+        uint256 liquidationFeeBps_
     ) {
         LendingMarket memory m = _markets[marketId];
-        return (m.morphoParams, m.ctfPosition, m.resolutionAt);
+        return (m.morphoParams, m.ctfPosition, m.resolutionAt, m.originationFeeBps, m.liquidationFeeBps);
     }
 
     function healthFactor(uint256 marketId, address borrower) external view returns (uint256) {

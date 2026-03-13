@@ -14,8 +14,18 @@ export const PRESAGE_ABI = [
   "function owner() external view returns (address)",
   "function triggerAccrual(uint256 marketId) external",
   // View
-  "function getMarket(uint256 marketId) external view returns (tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) morphoParams, tuple(address ctf, bytes32 parentCollectionId, bytes32 conditionId, uint256 positionId, uint256 oppositePositionId) ctfPosition, uint256 resolutionAt)",
+  "function getMarket(uint256 marketId) external view returns (tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) morphoParams, tuple(address ctf, bytes32 parentCollectionId, bytes32 conditionId, uint256 positionId, uint256 oppositePositionId) ctfPosition, uint256 resolutionAt, uint256 originationFeeBps, uint256 liquidationFeeBps)",
   "function healthFactor(uint256 marketId, address borrower) external view returns (uint256)",
+  // Fee admin
+  "function setTreasury(address treasury_) external",
+  "function setDefaultOriginationFee(uint256 feeBps) external",
+  "function setDefaultLiquidationFee(uint256 feeBps) external",
+  "function setMarketFees(uint256 marketId, uint256 originationFeeBps_, uint256 liquidationFeeBps_) external",
+  // Fee view
+  "function treasury() external view returns (address)",
+  "function defaultOriginationFeeBps() external view returns (uint256)",
+  "function defaultLiquidationFeeBps() external view returns (uint256)",
+  "function BPS() external view returns (uint256)",
   // Events
   "event MarketOpened(uint256 indexed marketId, address indexed loanToken, address indexed wrapper, uint256 positionId, uint256 resolutionAt)",
   "event Supplied(uint256 indexed marketId, address indexed lender, uint256 amount)",
@@ -24,6 +34,12 @@ export const PRESAGE_ABI = [
   "event CollateralReleased(uint256 indexed marketId, address indexed borrower, uint256 amount)",
   "event LoanTaken(uint256 indexed marketId, address indexed borrower, uint256 amount)",
   "event LoanRepaid(uint256 indexed marketId, address indexed borrower, uint256 amount)",
+  "event TreasurySet(address indexed treasury)",
+  "event DefaultOriginationFeeSet(uint256 feeBps)",
+  "event DefaultLiquidationFeeSet(uint256 feeBps)",
+  "event MarketFeesSet(uint256 indexed marketId, uint256 originationFeeBps, uint256 liquidationFeeBps)",
+  "event OriginationFeeCollected(uint256 indexed marketId, address indexed borrower, uint256 fee)",
+  "event LiquidationFeeCollected(uint256 indexed marketId, uint256 fee)",
 ];
 
 export const PRICEHUB_ABI = [

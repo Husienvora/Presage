@@ -26,6 +26,8 @@ const config: HardhatUserConfig = {
       chains: {
         56: {
           hardforkHistory: {
+            berlin: 0,
+            london: 0,
             shanghai: 0,
             cancun: 0,
           }

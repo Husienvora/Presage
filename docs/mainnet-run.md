@@ -43,6 +43,24 @@ This is a side effect of using load-balanced RPC providers (Alchemy/Infura) on h
 
 ---
 
-## 4. Final Invariants
+## 4. Fee Configuration (Post-Deploy)
+After deployment, the protocol owner should configure the fee system:
+
+```
+1. presage.setTreasury(treasuryAddress)          // Where fees accumulate
+2. presage.setDefaultOriginationFee(50)           // 0.5% default borrow fee
+3. presage.setDefaultLiquidationFee(1000)         // 10% default liquidation fee
+```
+
+New markets inherit these defaults. Per-market overrides:
+```
+presage.setMarketFees(marketId, origBps, liqBps)  // Override for specific market
+```
+
+The treasury address can be updated at any time by the owner via `setTreasury()`.
+
+---
+
+## 5. Final Invariants
 *   **Repayment Safety**: The `repay` function successfully pulls the provided amount (including buffer) and refunds unused dust. This was verified in Step 6 and Step 9.
 *   **Atomic Multi-Sig Operations**: The `SafeBatchHelper` successfully bundled complex approval/authorization/borrow/repay loops into single transactions, verifying the "One-Click Borrow" and "One-Click Close" workflows for institutional users.

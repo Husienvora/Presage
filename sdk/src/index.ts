@@ -260,6 +260,30 @@ export class PresageClient {
     return this.presage.healthFactor(marketId, borrower);
   }
 
+  // ──────── Fees ────────
+
+  async getDefaultFeeConfig() {
+    const [treasury, defaultOriginationFeeBps, defaultLiquidationFeeBps] = await Promise.all([
+      this.presage.treasury(),
+      this.presage.defaultOriginationFeeBps(),
+      this.presage.defaultLiquidationFeeBps(),
+    ]);
+    return { treasury, defaultOriginationFeeBps, defaultLiquidationFeeBps };
+  }
+
+  async getMarketFees(marketId: BigNumberish) {
+    const { originationFeeBps, liquidationFeeBps } = await this.getMarket(marketId);
+    return { originationFeeBps, liquidationFeeBps };
+  }
+
+  /**
+   * Calculates the origination fee for a given borrow amount in a specific market.
+   */
+  async estimateOriginationFee(marketId: BigNumberish, amount: BigNumberish): Promise<bigint> {
+    const { originationFeeBps } = await this.getMarket(marketId);
+    return (BigInt(amount) * BigInt(originationFeeBps)) / 10000n;
+  }
+
   // ──────── Safe Batching ────────
 
   /**

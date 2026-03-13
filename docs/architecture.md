@@ -147,19 +147,22 @@ sequenceDiagram
 ```
 
 ### 3. Borrow Flow
-Users with collateral can borrow USDT. Requires a one-time authorization of Presage on Morpho.
+Users with collateral can borrow USDT. Requires a one-time authorization of Presage on Morpho. An origination fee is deducted before sending funds to the borrower.
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Presage
+    participant Treasury
     participant Morpho
     participant USDT
 
     Note over User, Morpho: User must have authorized Presage
     User->>Presage: borrow(marketId, amount)
-    Presage->>Morpho: borrow(marketId, amount, User, User)
-    Morpho->>USDT: transfer(User, amount)
+    Presage->>Morpho: borrow(marketId, amount, User, Presage)
+    Morpho->>USDT: transfer(Presage, amount)
+    Presage->>Treasury: transfer(originationFee)
+    Presage->>USDT: transfer(User, amount - fee)
 ```
 
 ### 4. Liquidation: Settle With Merge
@@ -222,7 +225,7 @@ sequenceDiagram
 
 ```
 contracts/
-├── Presage.sol              # Router: market creation, supply/borrow/repay, liquidation
+├── Presage.sol              # Router: market creation, supply/borrow/repay, liquidation, per-market fees
 ├── WrappedCTF.sol           # Permissionless ERC20 ↔ ERC1155 wrapper
 ├── WrapperFactory.sol       # EIP-1167 clone factory with CREATE2
 ├── PriceHub.sol             # Oracle registry + decay + Morpho stub spawning

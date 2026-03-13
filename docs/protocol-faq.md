@@ -35,8 +35,19 @@ If utilization stays above 90%, it means there is high demand to borrow and lend
 
 - **Borrower APR:** This is the cost paid by the borrower, calculated directly from the IRM curve.
 - **Supplier APR:** Suppliers earn the interest paid by borrowers, distributed proportionally across all supplied assets.
-  - _Formula:_ `Supplier APR = Borrower APR × Utilization × (1 - Protocol Fee)`.
+  - _Formula:_ `Supplier APR = Borrower APR × Utilization × (1 - Morpho Fee)`.
   - _Example:_ If borrowers pay 10% interest and 50% of the pool is borrowed, suppliers earn 5%.
+
+### Q: How does the protocol generate revenue?
+
+Presage collects **per-market fees** at two points:
+
+1.  **Origination Fee (on Borrow):** When a user borrows, a configurable percentage (in basis points, max 5%) is deducted from the borrowed amount and sent to the protocol treasury. For example, at 50 bps (0.5%), borrowing 1000 USDT means 5 USDT goes to the treasury and 995 USDT goes to the borrower.
+2.  **Liquidation Fee:** When a position is liquidated, a configurable percentage (max 20%) of the liquidator's profit is routed to the treasury. This applies to both `settleWithMerge` (fee on USDT profit) and `settleWithLoanToken` (fee on seized collateral, kept as wrapped ERC20).
+
+**Per-market pricing:** Each market has its own fee rates, set from global defaults at creation time. The owner can override fees for individual markets via `setMarketFees()` — allowing higher fees on riskier/shorter-dated markets and lower fees on high-volume markets. Global defaults are changed via `setDefaultOriginationFee()` and `setDefaultLiquidationFee()`, affecting only future markets.
+
+Both fees default to 0. The treasury address must be set before fees can be collected.
 
 ### Q: Can the protocol team "rug" users by spiking interest rates?
 
@@ -108,21 +119,24 @@ The Presage admin/multisig has limited but important powers:
 1.  **Market Creation:** Choosing which prediction tokens to support and setting the initial parameters (LLTV, IRM, Resolution date).
 2.  **Price Feeds:** Selecting which "Adapters" (Signed Relayer, future zkTLS, etc.) are trusted to provide prices for specific tokens.
 3.  **Staleness Settings:** Deciding how "old" a price can be before the protocol stops allowing new borrows (to prevent trading on old news).
+4.  **Fee Configuration:** Setting the treasury address, global default fees, and per-market fee overrides. Fee caps are hardcoded (5% origination, 20% liquidation) and cannot be exceeded.
 
 ### Q: What is Immutable (Cannot be changed)?
 
 1.  **Active Market Parameters:** Once a market is open on Morpho, its IRM and LLTV are fixed.
 2.  **Wrapper Logic:** The code that handles the 1:1 swap between ERC1155 and ERC20 cannot be modified.
 3.  **User Funds:** The protocol cannot "freeze" or "seize" user funds. Withdrawals and Repayments are handled by the immutable Morpho Blue core logic.
+4.  **Fee Caps:** The maximum origination fee (5%) and liquidation fee (20%) are constants and cannot be changed.
 
 ---
 
 ## 7. Summary Table for Stakeholders
 
-| Feature           | Borrowers                               | Lenders                                             |
-| :---------------- | :-------------------------------------- | :-------------------------------------------------- |
-| **Yield/Cost**    | Pay dynamic market rates.               | Earn interest from borrowers.                       |
-| **Max Loan**      | Up to the LLTV (e.g., 80% of value).    | Protected by collateral and LLTV.                   |
-| **Exit Strategy** | Repay loan + interest to get CTF back.  | Withdraw stablecoins anytime (if liquidity exists). |
-| **Safety Net**    | Liquidated early to prevent total loss. | Losses isolated to single markets.                  |
-| **Time Factor**   | Borrowing limit shrinks as event nears. | Protected by LLTV Decay as risk increases.          |
+| Feature           | Borrowers                                          | Lenders                                             |
+| :---------------- | :------------------------------------------------- | :-------------------------------------------------- |
+| **Yield/Cost**    | Pay dynamic market rates + origination fee.        | Earn interest from borrowers.                       |
+| **Max Loan**      | Up to the LLTV (e.g., 80% of value).               | Protected by collateral and LLTV.                   |
+| **Exit Strategy** | Repay loan + interest to get CTF back.             | Withdraw stablecoins anytime (if liquidity exists). |
+| **Safety Net**    | Liquidated early to prevent total loss.            | Losses isolated to single markets.                  |
+| **Time Factor**   | Borrowing limit shrinks as event nears.            | Protected by LLTV Decay as risk increases.          |
+| **Fees**          | Origination fee deducted at borrow (per-market).   | No fees on supply/withdraw.                         |

@@ -1253,6 +1253,70 @@ describeFn("Presage Mainnet Integration (BNB + predict.fun + Dual-Sig Safe)", fu
   });
 
   // ══════════════════════════════════════════════════════════════════════════════
+  //  PHASE 5: PROTOCOL FEES
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  it("Step 21 — Configure protocol fees", async function () {
+    if (!presageMarketId) {
+      this.skip();
+      return;
+    }
+
+    const treasuryAddr = signer2.address; // Use signer2 as treasury for clear verification
+    const originationFeeBps = 200n; // 2%
+    const liquidationFeeBps = 1000n; // 10%
+
+    // Set treasury
+    const tx1 = await presage.setTreasury(treasuryAddr);
+    await tx1.wait();
+
+    // Set market fees
+    const tx2 = await presage.setMarketFees(presageMarketId, originationFeeBps, liquidationFeeBps);
+    await tx2.wait();
+
+    const market = await presage.getMarket(presageMarketId);
+    expect(await presage.treasury()).to.equal(treasuryAddr);
+    expect(market.originationFeeBps_).to.equal(originationFeeBps);
+    expect(market.liquidationFeeBps_).to.equal(liquidationFeeBps);
+
+    console.log(`    Treasury set to  : ${treasuryAddr} (Signer 2)`);
+    console.log(`    Market fees set  : Origination ${originationFeeBps} bps, Liquidation ${liquidationFeeBps} bps`);
+  });
+
+  it("Step 22 — Verify origination fee on borrow", async function () {
+    if (!presageMarketId) {
+      this.skip();
+      return;
+    }
+
+    const borrowAmount = parseEther("0.5"); // 0.5 USDT
+    const originationFeeBps = 200n;
+    const expectedFee = (borrowAmount * originationFeeBps) / 10000n;
+    const expectedNet = borrowAmount - expectedFee;
+
+    const usdt = new Contract(USDT, ERC20_ABI, signer);
+    const treasuryBalBefore = await usdt.balanceOf(signer2.address);
+    const borrowerBalBefore = await usdt.balanceOf(signer.address);
+
+    const tx = await presage.borrow(presageMarketId, borrowAmount);
+    trackGas("borrow with fee", await tx.wait());
+
+    const treasuryBalAfter = await usdt.balanceOf(signer2.address);
+    const borrowerBalAfter = await usdt.balanceOf(signer.address);
+
+    const feeCollected = treasuryBalAfter - treasuryBalBefore;
+    const netReceived = borrowerBalAfter - borrowerBalBefore;
+
+    console.log(`    Borrow amount  : ${formatEther(borrowAmount)} USDT`);
+    console.log(`    Expected fee   : ${formatEther(expectedFee)} USDT (2%)`);
+    console.log(`    Fee collected  : ${formatEther(feeCollected)} USDT`);
+    console.log(`    Net received   : ${formatEther(netReceived)} USDT`);
+
+    expect(feeCollected).to.equal(expectedFee);
+    expect(netReceived).to.equal(expectedNet);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════════
   //  CLEANUP: Recover funds
   // ══════════════════════════════════════════════════════════════════════════════
 
