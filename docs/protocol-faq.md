@@ -101,6 +101,20 @@ A borrower is liquidated if their debt grows too large relative to their collate
 2.  **Interest Accrual** increases their debt.
 3.  **LLTV Decay** lowers their borrowing limit.
 
+### Q: Who actually performs liquidations?
+
+Liquidation functions are **permissionless** — anyone can call them. However, prediction market collateral (WrappedCTF) has no DEX liquidity, so standard Morpho Blue MEV searchers cannot profitably liquidate Presage positions by default.
+
+Presage operates a dedicated **Safety Bot** as the primary liquidation mechanism. This bot:
+- Monitors all borrower positions continuously
+- Keeps oracle prices fresh by submitting proofs on a schedule (required — if oracle goes stale, all operations freeze)
+- Executes liquidations when health factor drops below 1.0
+- Uses its own funded wallet (USDT or opposite-outcome CTF tokens)
+
+Two liquidation paths are available:
+1. **settleWithLoanToken:** Liquidator pays USDT, receives seized WrappedCTF at a discount (Morpho's Liquidation Incentive Factor: ~7-15% bonus).
+2. **settleWithMerge:** Liquidator provides opposite-outcome CTF tokens, atomically merges YES+NO into USDT, repays debt, keeps the profit. More capital-efficient.
+
 ### Q: Is there a risk of "Systemic Failure"?
 
 Because Presage uses **Isolated Markets** on Morpho Blue:

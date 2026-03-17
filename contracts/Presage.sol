@@ -58,10 +58,30 @@ contract Presage is ERC1155Holder, IFlashUnwrapCallback, Ownable {
         uint256 liquidationFeeBps;
     }
 
+    struct LeverageRequest {
+        uint256 marginAmount;
+        uint256 supplyCollateralAmount;
+        uint256 borrowAmountMax;
+        uint256 deadline;
+        bool filled;
+    }
+
+    struct DeleverageRequest {
+        uint256 repayAmount;
+        uint256 withdrawCollateralAmountMax;
+        uint256 deadline;
+        bool filled;
+    }
+
     // ──────── State ────────
 
     uint256 public nextMarketId = 1;
     mapping(uint256 => LendingMarket) internal _markets;
+
+    // ──────── Leverage State ────────
+
+    mapping(address => mapping(uint256 => LeverageRequest)) public leverageRequests;
+    mapping(address => mapping(uint256 => DeleverageRequest)) public deleverageRequests;
 
     // ──────── Fee State ────────
 
@@ -86,6 +106,12 @@ contract Presage is ERC1155Holder, IFlashUnwrapCallback, Ownable {
     event MarketFeesSet(uint256 indexed marketId, uint256 originationFeeBps, uint256 liquidationFeeBps);
     event OriginationFeeCollected(uint256 indexed marketId, address indexed borrower, uint256 fee);
     event LiquidationFeeCollected(uint256 indexed marketId, uint256 fee);
+    event LeverageRequested(address indexed borrower, uint256 indexed marketId, uint256 marginAmount, uint256 supplyCollateralAmount, uint256 borrowAmountMax, uint256 deadline);
+    event LeverageFilled(address indexed borrower, uint256 indexed marketId, address indexed solver, uint256 borrowAmount);
+    event DeleverageRequested(address indexed borrower, uint256 indexed marketId, uint256 repayAmount, uint256 withdrawCollateralAmountMax, uint256 deadline);
+    event DeleverageFilled(address indexed borrower, uint256 indexed marketId, address indexed solver, uint256 withdrawAmount);
+    event LeverageCancelled(address indexed borrower, uint256 indexed marketId);
+    event DeleverageCancelled(address indexed borrower, uint256 indexed marketId);
 
     constructor(IMorpho morpho_, WrapperFactory factory_, PriceHub priceHub_, address irm_) Ownable(msg.sender) {
         morpho = morpho_;
@@ -342,6 +368,161 @@ contract Presage is ERC1155Holder, IFlashUnwrapCallback, Ownable {
 
         emit SettledWithMerge(marketId, borrower, liquidator, amount, profit);
         if (fee > 0) emit LiquidationFeeCollected(marketId, fee);
+    }
+
+    // ═══════════════ LEVERAGE ═══════════════
+
+    /// @notice Borrower posts a leverage request. A solver fills it atomically.
+    /// @param marketId The Presage market ID
+    /// @param marginAmount CTF tokens the borrower contributes as margin
+    /// @param supplyCollateralAmount Total CTF collateral (margin + solver-provided)
+    /// @param borrowAmountMax Max loan tokens to borrow (goes to solver)
+    /// @param deadline Unix timestamp after which the request expires
+    function requestLeverage(
+        uint256 marketId,
+        uint256 marginAmount,
+        uint256 supplyCollateralAmount,
+        uint256 borrowAmountMax,
+        uint256 deadline
+    ) external {
+        require(supplyCollateralAmount > marginAmount, "margin >= total");
+        require(deadline > block.timestamp, "deadline passed");
+
+        leverageRequests[msg.sender][marketId] = LeverageRequest({
+            marginAmount: marginAmount,
+            supplyCollateralAmount: supplyCollateralAmount,
+            borrowAmountMax: borrowAmountMax,
+            deadline: deadline,
+            filled: false
+        });
+
+        emit LeverageRequested(msg.sender, marketId, marginAmount, supplyCollateralAmount, borrowAmountMax, deadline);
+    }
+
+    /// @notice Solver fills a leverage request: provides extra collateral, borrows on behalf of borrower, receives loan tokens.
+    /// @param borrower The borrower who posted the request
+    /// @param marketId The Presage market ID
+    function fillLeverage(address borrower, uint256 marketId) external {
+        LeverageRequest storage req = leverageRequests[borrower][marketId];
+        require(block.timestamp <= req.deadline, "request expired");
+        require(!req.filled, "already filled");
+
+        req.filled = true;
+
+        LendingMarket memory m = _markets[marketId];
+        WrappedCTF wrapper = WrappedCTF(m.morphoParams.collateralToken);
+        ICTF ctf = m.ctfPosition.ctf;
+        uint256 posId = m.ctfPosition.positionId;
+
+        // 1. Pull margin from borrower
+        if (req.marginAmount > 0) {
+            ctf.safeTransferFrom(borrower, address(this), posId, req.marginAmount, "");
+        }
+
+        // 2. Pull leveraged amount from solver
+        uint256 leveragedAmount = req.supplyCollateralAmount - req.marginAmount;
+        ctf.safeTransferFrom(msg.sender, address(this), posId, leveragedAmount, "");
+
+        // 3. Wrap all collateral and supply to Morpho on behalf of borrower
+        ctf.setApprovalForAll(address(wrapper), true);
+        wrapper.wrap(req.supplyCollateralAmount);
+        ctf.setApprovalForAll(address(wrapper), false);
+        wrapper.forceApprove(address(morpho), req.supplyCollateralAmount);
+        morpho.supplyCollateral(m.morphoParams, req.supplyCollateralAmount, borrower, "");
+        wrapper.forceApprove(address(morpho), 0);
+
+        // 4. Borrow on behalf of borrower
+        uint256 borrowAmount = req.borrowAmountMax;
+        morpho.borrow(m.morphoParams, borrowAmount, 0, borrower, address(this));
+
+        // 5. Deduct origination fee, send remainder to solver
+        IERC20 loan = IERC20(m.morphoParams.loanToken);
+        uint256 fee;
+        if (m.originationFeeBps > 0 && treasury != address(0)) {
+            fee = (borrowAmount * m.originationFeeBps) / BPS;
+            loan.safeTransfer(treasury, fee);
+        }
+        loan.safeTransfer(msg.sender, borrowAmount - fee);
+
+        emit LeverageFilled(borrower, marketId, msg.sender, borrowAmount);
+        if (fee > 0) emit OriginationFeeCollected(marketId, borrower, fee);
+    }
+
+    /// @notice Borrower posts a deleverage request. A solver fills it atomically.
+    /// @param marketId The Presage market ID
+    /// @param repayAmount Loan tokens the solver provides to repay debt
+    /// @param withdrawCollateralAmountMax Max collateral to withdraw (goes to solver as CTF)
+    /// @param deadline Unix timestamp after which the request expires
+    function requestDeleverage(
+        uint256 marketId,
+        uint256 repayAmount,
+        uint256 withdrawCollateralAmountMax,
+        uint256 deadline
+    ) external {
+        require(deadline > block.timestamp, "deadline passed");
+
+        deleverageRequests[msg.sender][marketId] = DeleverageRequest({
+            repayAmount: repayAmount,
+            withdrawCollateralAmountMax: withdrawCollateralAmountMax,
+            deadline: deadline,
+            filled: false
+        });
+
+        emit DeleverageRequested(msg.sender, marketId, repayAmount, withdrawCollateralAmountMax, deadline);
+    }
+
+    /// @notice Solver fills a deleverage request: provides loan tokens, repays debt, receives collateral as CTF.
+    /// @param borrower The borrower who posted the request
+    /// @param marketId The Presage market ID
+    function fillDeleverage(address borrower, uint256 marketId) external {
+        DeleverageRequest storage req = deleverageRequests[borrower][marketId];
+        require(block.timestamp <= req.deadline, "request expired");
+        require(!req.filled, "already filled");
+
+        req.filled = true;
+
+        LendingMarket memory m = _markets[marketId];
+        WrappedCTF wrapper = WrappedCTF(m.morphoParams.collateralToken);
+        IERC20 loan = IERC20(m.morphoParams.loanToken);
+
+        // 1. Pull loan tokens from solver
+        loan.safeTransferFrom(msg.sender, address(this), req.repayAmount);
+
+        // 2. Repay borrower's debt
+        loan.forceApprove(address(morpho), req.repayAmount);
+        morpho.repay(m.morphoParams, req.repayAmount, 0, borrower, "");
+        loan.forceApprove(address(morpho), 0);
+
+        // 3. Refund dust from repay
+        uint256 dust = loan.balanceOf(address(this));
+        if (dust > 0) loan.safeTransfer(msg.sender, dust);
+
+        // 4. Withdraw collateral and send CTF to solver
+        morpho.withdrawCollateral(m.morphoParams, req.withdrawCollateralAmountMax, borrower, address(this));
+        wrapper.unwrap(req.withdrawCollateralAmountMax);
+        m.ctfPosition.ctf.safeTransferFrom(address(this), msg.sender, m.ctfPosition.positionId, req.withdrawCollateralAmountMax, "");
+
+        emit DeleverageFilled(borrower, marketId, msg.sender, req.withdrawCollateralAmountMax);
+    }
+
+    /// @notice Borrower cancels an active leverage request.
+    /// @param marketId The Presage market ID
+    function cancelLeverageRequest(uint256 marketId) external {
+        LeverageRequest storage req = leverageRequests[msg.sender][marketId];
+        require(req.deadline > 0, "no active request");
+        require(!req.filled, "already filled");
+        delete leverageRequests[msg.sender][marketId];
+        emit LeverageCancelled(msg.sender, marketId);
+    }
+
+    /// @notice Borrower cancels an active deleverage request.
+    /// @param marketId The Presage market ID
+    function cancelDeleverageRequest(uint256 marketId) external {
+        DeleverageRequest storage req = deleverageRequests[msg.sender][marketId];
+        require(req.deadline > 0, "no active request");
+        require(!req.filled, "already filled");
+        delete deleverageRequests[msg.sender][marketId];
+        emit DeleverageCancelled(msg.sender, marketId);
     }
 
     // ═══════════════ VIEW ═══════════════

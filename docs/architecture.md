@@ -210,10 +210,33 @@ sequenceDiagram
 
 ---
 
+## Operational Infrastructure
+
+Presage's smart contracts define the rules, but safe operation requires off-chain infrastructure that runs continuously.
+
+### Safety Bot (Liquidation Keeper)
+A lending protocol requires an active liquidation process. Standard Morpho Blue MEV searchers cannot profitably liquidate prediction market collateral — WrappedCTF tokens have no DEX liquidity, and predict.fun's orderbook is off-chain and non-atomic. Presage must operate its own **Safety Bot** that:
+
+- Monitors all borrower positions for health factor < 1.0
+- Executes `settleWithLoanToken()` or `settleWithMerge()` when positions become liquidatable
+- Requires a funded wallet (USDT for Path A, opposite-outcome CTF tokens for Path B)
+
+### Price Keeper
+Presage uses pull oracles — prices must be submitted with proofs. If nobody updates the oracle within `maxStaleness` (default: 1 hour), `PriceHub.morphoPrice()` reverts, freezing all Morpho operations including liquidations. A **Price Keeper** must:
+
+- Submit fresh oracle proofs on a schedule (via `SignedProofVerifier` or `ReclaimVerifier`)
+- Run continuously — if it stops, the protocol freezes and bad debt can accumulate silently
+
+Both services can run as a single off-chain process. See `docs/pre-launch-build-list.md` for full specifications.
+
+---
+
 ## Risk Model Summary
 
 | Risk | Severity | Mitigation |
 |---|---|---|
+| No liquidation bot | Critical | Build and fund a Safety Bot before launch |
+| Oracle goes stale | Critical | Build a Price Keeper that submits proofs on schedule |
 | Resolution risk | Critical | LLTV decay + mandatory cooldown window |
 | Wrapper bug | High | Minimal, immutable code; permissionless design |
 | Oracle manipulation | Medium-High | Fixed-price fallback + pull-oracle staleness checks |
@@ -235,5 +258,7 @@ contracts/
 │   └── IPriceAdapter.sol    # Pluggable oracle backend interface
 ├── oracle/
 │   ├── FixedPriceAdapter.sol    # $1 always (v1 default)
-│   └── PullPriceAdapter.sol     # Accepts proven price observations
+│   ├── PullPriceAdapter.sol     # Accepts proven price observations
+│   ├── ReclaimVerifier.sol      # zkTLS proof verifier (Reclaim Protocol)
+│   └── SignedProofVerifier.sol  # ECDSA-signed attestation verifier
 ```

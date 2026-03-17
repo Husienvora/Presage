@@ -160,10 +160,30 @@ function emergencyFreezeMarket(uint256 marketId) external onlyOwner {
 
 ---
 
+### 10. No Liquidation Bot or Price Keeper
+
+**This is an operational gap, not a code gap — but it is equally critical.**
+
+Presage's contracts define when positions are liquidatable, but no off-chain infrastructure exists to execute liquidations or keep oracle prices fresh.
+
+**Liquidation bot:**
+- Standard Morpho Blue MEV searchers will not automatically protect Presage markets. WrappedCTF tokens have no DEX liquidity — a bot that seizes them cannot sell them for an immediate profit on Uniswap or PancakeSwap.
+- The "flash-loan → liquidate → sell on predict.fun" loop described in `liquidity-incentive-plan.md` does not work atomically. predict.fun uses an off-chain orderbook, not an on-chain AMM. Seized collateral cannot be sold in the same transaction.
+- Presage must operate its own Safety Bot that monitors positions and executes `settleWithLoanToken()` or `settleWithMerge()` with its own capital.
+
+**Price keeper:**
+- Presage uses pull oracles — prices must be actively submitted with proofs. If the oracle goes stale (beyond `maxStaleness`, default 1 hour), `PriceHub.morphoPrice()` reverts. This freezes ALL Morpho operations: no borrows, no liquidations, no health checks. Bad debt accumulates silently because nobody can liquidate.
+- A price keeper must continuously submit fresh proofs on a schedule.
+
+**Recommendation:** Build and deploy both services before launch. They can be a single off-chain process. The bot wallet needs USDT funding for Path A liquidations and gas for both services. See `docs/pre-launch-build-list.md` for detailed specifications.
+
+---
+
 ## Summary Priority Matrix
 
 | Gap | Severity | Effort | Priority |
 |-----|----------|--------|----------|
+| No liquidation bot or price keeper | **Critical** | Medium | **P0** |
 | LLTV too high (77%) | **Critical** | Low | **P0** |
 | No supply/borrow caps | **High** | Medium | **P1** |
 | No-new-borrows window missing | **High** | Low | **P1** |
