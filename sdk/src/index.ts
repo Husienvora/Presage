@@ -1,5 +1,5 @@
 import { ethers, Contract, Signer, Provider, BigNumberish } from "ethers";
-import { PRESAGE_ABI, SAFE_BATCH_HELPER_ABI, ERC20_ABI, WRAPPER_FACTORY_ABI, MORPHO_ABI, PRICE_HUB_ABI, IRM_ABI } from "./abis";
+import { PRESAGE_ABI, SAFE_BATCH_HELPER_ABI, ERC20_ABI, WRAPPER_FACTORY_ABI, MORPHO_ABI, PRICE_HUB_ABI, IRM_ABI, CTF_ABI, ORACLE_ABI } from "./abis";
 
 export interface PresageConfig {
   presageAddress: string;
@@ -48,6 +48,264 @@ export class PresageClient {
   async repay(marketId: BigNumberish, amount: BigNumberish) {
     return this.presage.repay(marketId, amount);
   }
+
+  // ──────── Leverage / Deleverage ────────
+
+  /**
+   * Borrower requests a leveraged position. A solver fills it atomically.
+   *
+   * @param marketId      Presage market ID
+   * @param marginAmount  CTF tokens the borrower contributes as margin
+   * @param totalCollateral  Total CTF collateral (margin + solver-provided)
+   * @param maxBorrow     Max USDT to borrow (goes to solver as payment)
+   * @param deadline      Unix timestamp after which the request expires
+   */
+  async requestLeverage(
+    marketId: BigNumberish,
+    marginAmount: BigNumberish,
+    totalCollateral: BigNumberish,
+    maxBorrow: BigNumberish,
+    deadline: BigNumberish
+  ) {
+    return this.presage.requestLeverage(marketId, marginAmount, totalCollateral, maxBorrow, deadline);
+  }
+
+  /**
+   * Borrower requests a deleverage. A solver fills it atomically.
+   *
+   * @param marketId      Presage market ID
+   * @param repayAmount   USDT the solver provides to repay borrower's debt
+   * @param maxWithdraw   Max CTF to withdraw from collateral (goes to solver)
+   * @param deadline      Unix timestamp after which the request expires
+   */
+  async requestDeleverage(
+    marketId: BigNumberish,
+    repayAmount: BigNumberish,
+    maxWithdraw: BigNumberish,
+    deadline: BigNumberish
+  ) {
+    return this.presage.requestDeleverage(marketId, repayAmount, maxWithdraw, deadline);
+  }
+
+  /**
+   * Cancels the caller's active leverage request for a market.
+   */
+  async cancelLeverageRequest(marketId: BigNumberish) {
+    return this.presage.cancelLeverageRequest(marketId);
+  }
+
+  /**
+   * Cancels the caller's active deleverage request for a market.
+   */
+  async cancelDeleverageRequest(marketId: BigNumberish) {
+    return this.presage.cancelDeleverageRequest(marketId);
+  }
+
+  /**
+   * Solver fills a borrower's leverage request.
+   * The solver provides the missing CTF and receives USDT (minus origination fee).
+   */
+  async fillLeverage(borrower: string, marketId: BigNumberish) {
+    return this.presage.fillLeverage(borrower, marketId);
+  }
+
+  /**
+   * Solver fills a borrower's deleverage request.
+   * The solver provides USDT to repay debt and receives CTF collateral.
+   */
+  async fillDeleverage(borrower: string, marketId: BigNumberish) {
+    return this.presage.fillDeleverage(borrower, marketId);
+  }
+
+  /**
+   * Fetches a borrower's active leverage request for a market.
+   * Returns null if no active request exists.
+   */
+  async getLeverageRequest(borrower: string, marketId: BigNumberish) {
+    const req = await this.presage.leverageRequests(borrower, marketId);
+    if (BigInt(req.deadline) === 0n) return null;
+    return {
+      marginAmount: BigInt(req.marginAmount),
+      supplyCollateralAmount: BigInt(req.supplyCollateralAmount),
+      borrowAmountMax: BigInt(req.borrowAmountMax),
+      deadline: BigInt(req.deadline),
+      filled: req.filled as boolean,
+    };
+  }
+
+  /**
+   * Fetches a borrower's active deleverage request for a market.
+   * Returns null if no active request exists.
+   */
+  async getDeleverageRequest(borrower: string, marketId: BigNumberish) {
+    const req = await this.presage.deleverageRequests(borrower, marketId);
+    if (BigInt(req.deadline) === 0n) return null;
+    return {
+      repayAmount: BigInt(req.repayAmount),
+      withdrawCollateralAmountMax: BigInt(req.withdrawCollateralAmountMax),
+      deadline: BigInt(req.deadline),
+      filled: req.filled as boolean,
+    };
+  }
+
+  // ──────── Settlement / Liquidation ────────
+
+  /**
+   * Liquidate an unhealthy position by providing loan tokens.
+   * The liquidator repays debt and seizes collateral (as CTF) at a discount.
+   * A liquidation fee is sent to the treasury.
+   */
+  async settleWithLoanToken(marketId: BigNumberish, borrower: string, repayAmount: BigNumberish) {
+    return this.presage.settleWithLoanToken(marketId, borrower, repayAmount);
+  }
+
+  /**
+   * Liquidate an unhealthy position using opposite-side CTF tokens.
+   * The liquidator provides opposite CTF, which is merged with the borrower's
+   * collateral CTF back into USDT. The USDT repays debt, and the liquidator
+   * receives the profit minus liquidation fee.
+   *
+   * This requires no upfront USDT — only the opposite position tokens.
+   */
+  async settleWithMerge(marketId: BigNumberish, borrower: string, seizeAmount: BigNumberish) {
+    return this.presage.settleWithMerge(marketId, borrower, seizeAmount);
+  }
+
+  // ──────── Leverage / Deleverage Helpers ────────
+
+  private static readonly ORACLE_PRICE_SCALE = 10n ** 36n;
+  private static readonly BPS_SCALE = 10000n;
+
+  /**
+   * Estimates the solver's profit for filling a leverage request.
+   *
+   * profit = (borrowAmount - originationFee) - (leveragedCTF * oraclePrice)
+   *
+   * @returns Object with profit (bigint, 18-dec USDT), leveragedAmount, ctfCost, usdtReceived
+   */
+  async estimateLeverageProfit(
+    marketId: BigNumberish,
+    marginAmount: BigNumberish,
+    totalCollateral: BigNumberish,
+    maxBorrow: BigNumberish
+  ) {
+    const market = await this.getMarket(marketId);
+    const oraclePrice = await this._getOraclePriceRaw(market.morphoParams.oracle);
+    const feeBps = BigInt(market.originationFeeBps);
+
+    const leveragedAmount = BigInt(totalCollateral) - BigInt(marginAmount);
+    const ctfCost = (leveragedAmount * oraclePrice) / PresageClient.ORACLE_PRICE_SCALE;
+    const fee = (BigInt(maxBorrow) * feeBps) / PresageClient.BPS_SCALE;
+    const usdtReceived = BigInt(maxBorrow) - fee;
+    const profit = usdtReceived - ctfCost;
+
+    return { profit, leveragedAmount, ctfCost, usdtReceived, fee };
+  }
+
+  /**
+   * Estimates the solver's profit for filling a deleverage request.
+   *
+   * profit = (withdrawCTF * oraclePrice) - repayAmount
+   *
+   * @returns Object with profit (bigint, 18-dec USDT) and ctfValue
+   */
+  async estimateDeleverageProfit(
+    marketId: BigNumberish,
+    repayAmount: BigNumberish,
+    withdrawCollateral: BigNumberish
+  ) {
+    const market = await this.getMarket(marketId);
+    const oraclePrice = await this._getOraclePriceRaw(market.morphoParams.oracle);
+
+    const ctfValue = (BigInt(withdrawCollateral) * oraclePrice) / PresageClient.ORACLE_PRICE_SCALE;
+    const profit = ctfValue - BigInt(repayAmount);
+
+    return { profit, ctfValue };
+  }
+
+  /**
+   * Calculates the max borrow amount for a leverage request given market constraints.
+   *
+   * maxBorrow = totalCollateral * oraclePrice * LLTV / 1e36 / 1e18
+   *
+   * This is the theoretical max — the borrower should use a value slightly below
+   * to leave room for health factor > 1.
+   */
+  async getMaxLeverageBorrow(marketId: BigNumberish, totalCollateral: BigNumberish): Promise<bigint> {
+    const market = await this.getMarket(marketId);
+    const oraclePrice = await this._getOraclePriceRaw(market.morphoParams.oracle);
+    const lltv = BigInt(market.morphoParams.lltv);
+
+    return (BigInt(totalCollateral) * oraclePrice * lltv) / PresageClient.ORACLE_PRICE_SCALE / (10n ** 18n);
+  }
+
+  /**
+   * Returns the current LLTV decay factor for a market (1e18 = no decay, 0 = fully decayed).
+   * Use this to check how close a market is to resolution.
+   */
+  async getDecayFactor(marketId: BigNumberish): Promise<bigint> {
+    const { ctfPosition } = await this.getMarket(marketId);
+    const hub = await this.getPriceHub();
+    return BigInt(await hub.decayFactor(ctfPosition.positionId));
+  }
+
+  /**
+   * Checks if a borrower has all required approvals for leverage.
+   * Returns which approvals are missing.
+   */
+  async checkLeverageReadiness(marketId: BigNumberish, borrower: string) {
+    const market = await this.getMarket(marketId);
+    const runner = this.config.signer || this.config.provider;
+    const ctf = new Contract(market.ctfPosition.ctf, CTF_ABI, runner);
+
+    const [morphoAuthorized, ctfApproved] = await Promise.all([
+      this.morpho.isAuthorized(borrower, this.config.presageAddress),
+      ctf.isApprovedForAll(borrower, this.config.presageAddress),
+    ]);
+
+    return {
+      morphoAuthorized: morphoAuthorized as boolean,
+      ctfApproved: ctfApproved as boolean,
+      ready: morphoAuthorized && ctfApproved,
+    };
+  }
+
+  /**
+   * Checks if a solver has all required approvals and balances for filling leverage.
+   */
+  async checkSolverReadiness(
+    marketId: BigNumberish,
+    solver: string,
+    leveragedAmount: BigNumberish
+  ) {
+    const market = await this.getMarket(marketId);
+    const runner = this.config.signer || this.config.provider;
+    const ctf = new Contract(market.ctfPosition.ctf, CTF_ABI, runner);
+
+    const [morphoAuthorized, ctfApproved, ctfBalance] = await Promise.all([
+      this.morpho.isAuthorized(solver, this.config.presageAddress),
+      ctf.isApprovedForAll(solver, this.config.presageAddress),
+      ctf.balanceOf(solver, market.ctfPosition.positionId),
+    ]);
+
+    const hasEnoughCTF = BigInt(ctfBalance) >= BigInt(leveragedAmount);
+
+    return {
+      morphoAuthorized: morphoAuthorized as boolean,
+      ctfApproved: ctfApproved as boolean,
+      ctfBalance: BigInt(ctfBalance),
+      hasEnoughCTF,
+      ready: morphoAuthorized && ctfApproved && hasEnoughCTF,
+    };
+  }
+
+  private async _getOraclePriceRaw(oracleAddress: string): Promise<bigint> {
+    const runner = this.config.signer || this.config.provider;
+    const oracle = new Contract(oracleAddress, ORACLE_ABI, runner);
+    return BigInt(await oracle.price());
+  }
+
+  // ──────── Debt Helpers ────────
 
   /**
    * Helper to calculate the current full debt for a user in a specific market,

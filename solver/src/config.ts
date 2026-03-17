@@ -22,4 +22,8 @@ export const config = {
   acquireMode: (process.env.ACQUIRE_MODE || "inventory") as "inventory" | "jit",
   jitSlippageBps: BigInt(process.env.JIT_SLIPPAGE_BPS || "100"),
   jitFillTimeoutMs: (parseInt(process.env.JIT_FILL_TIMEOUT_SECONDS || "30", 10)) * 1000,
+
+  // Redis persistence
+  redisUrl: process.env.REDIS_URL || "redis://127.0.0.1:6379",
+  redisPrefix: process.env.REDIS_PREFIX || "presage-solver",
 };

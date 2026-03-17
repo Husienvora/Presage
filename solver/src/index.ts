@@ -2,6 +2,7 @@ import { ethers, Contract, Wallet, JsonRpcProvider, formatEther, formatUnits, pa
 import { config } from "./config";
 import { PRESAGE_ABI, ERC20_ABI, CTF_ABI, MORPHO_ABI, ORACLE_ABI } from "./abis";
 import { buyCTF, sellCTF } from "./predict";
+import * as store from "./store";
 
 // ──────── Types ────────
 
@@ -45,6 +46,14 @@ const marketCache = new Map<
     lltv: bigint;
   }
 >();
+
+// Track cancelled/filled requests to avoid wasting gas on doomed transactions.
+// Backed by Redis — survives restarts.
+// Key format: "leverage:borrower:marketId" or "deleverage:borrower:marketId"
+
+function requestKey(type: "leverage" | "deleverage", borrower: string, marketId: bigint): string {
+  return `${type}:${borrower.toLowerCase()}:${marketId}`;
+}
 
 // ──────── Helpers ────────
 
@@ -162,7 +171,25 @@ async function ensureMorphoAuthorization() {
 
 // ──────── Fill Logic ────────
 
-async function fillLeverageRequest(opp: LeverageOpp) {
+async function fillLeverageRequest(opp: LeverageOpp, profit: bigint = 0n) {
+  const key = requestKey("leverage", opp.borrower, opp.marketId);
+  if (await store.isDeadRequest(key)) {
+    log(`  SKIP: Request already cancelled/filled (cached)`);
+    return;
+  }
+
+  // Re-read on-chain state to catch cancellations between event and fill
+  try {
+    const req = await presage.leverageRequests(opp.borrower, opp.marketId);
+    if (req.filled || BigInt(req.deadline) === 0n || BigInt(req.deadline) < BigInt(Math.floor(Date.now() / 1000))) {
+      log(`  SKIP: Request no longer active on-chain (filled=${req.filled}, deadline=${req.deadline})`);
+      await store.addDeadRequest(key);
+      return;
+    }
+  } catch {
+    // If the read itself fails, proceed and let the tx revert naturally
+  }
+
   const market = await getMarketInfo(opp.marketId);
   const leveragedAmount = opp.supplyCollateralAmount - opp.marginAmount;
 
@@ -214,12 +241,31 @@ async function fillLeverageRequest(opp: LeverageOpp) {
     const tx = await presage.fillLeverage(opp.borrower, opp.marketId);
     const receipt = await tx.wait();
     log(`  FILLED leverage in tx ${receipt.hash}`);
+    await store.recordFill("leverage", opp.borrower, opp.marketId, receipt.hash, formatEther(profit));
   } catch (err: any) {
     log(`  FAILED to fill leverage: ${err.reason || err.message}`);
   }
 }
 
-async function fillDeleverageRequest(opp: DeleverageOpp) {
+async function fillDeleverageRequest(opp: DeleverageOpp, profit: bigint = 0n) {
+  const key = requestKey("deleverage", opp.borrower, opp.marketId);
+  if (await store.isDeadRequest(key)) {
+    log(`  SKIP: Request already cancelled/filled (cached)`);
+    return;
+  }
+
+  // Re-read on-chain state to catch cancellations between event and fill
+  try {
+    const req = await presage.deleverageRequests(opp.borrower, opp.marketId);
+    if (req.filled || BigInt(req.deadline) === 0n || BigInt(req.deadline) < BigInt(Math.floor(Date.now() / 1000))) {
+      log(`  SKIP: Request no longer active on-chain (filled=${req.filled}, deadline=${req.deadline})`);
+      await store.addDeadRequest(key);
+      return;
+    }
+  } catch {
+    // If the read itself fails, proceed and let the tx revert naturally
+  }
+
   const market = await getMarketInfo(opp.marketId);
 
   // Check USDT balance
@@ -248,6 +294,7 @@ async function fillDeleverageRequest(opp: DeleverageOpp) {
     const tx = await presage.fillDeleverage(opp.borrower, opp.marketId);
     const receipt = await tx.wait();
     log(`  FILLED deleverage in tx ${receipt.hash}`);
+    await store.recordFill("deleverage", opp.borrower, opp.marketId, receipt.hash, formatEther(profit));
 
     // In JIT mode, immediately sell the received CTF back to predict.fun
     if (config.acquireMode === "jit") {
@@ -271,6 +318,10 @@ function startEventListener() {
 
   presage.on("LeverageRequested", async (borrower: string, marketId: bigint, marginAmount: bigint, supplyCollateralAmount: bigint, borrowAmountMax: bigint, deadline: bigint) => {
     if (!config.marketIds.includes(marketId)) return;
+    await store.addBorrower(borrower);
+
+    // New request clears any previous dead state (borrower can overwrite)
+    await store.removeDeadRequest(requestKey("leverage", borrower, marketId));
 
     log(`LeverageRequested: borrower=${borrower} market=${marketId} margin=${formatEther(marginAmount)} total=${formatEther(supplyCollateralAmount)} borrow=${formatEther(borrowAmountMax)}`);
 
@@ -279,7 +330,7 @@ function startEventListener() {
     const { profitable, profit } = await evaluateLeverage(opp);
     if (profitable) {
       log(`  PROFITABLE: est. profit = ${formatEther(profit)} USDT`);
-      await fillLeverageRequest(opp);
+      await fillLeverageRequest(opp, profit);
     } else {
       log(`  NOT PROFITABLE: est. profit = ${formatEther(profit)} USDT (min: ${formatEther(config.minProfitUsdt)})`);
     }
@@ -287,6 +338,10 @@ function startEventListener() {
 
   presage.on("DeleverageRequested", async (borrower: string, marketId: bigint, repayAmount: bigint, withdrawCollateralAmountMax: bigint, deadline: bigint) => {
     if (!config.marketIds.includes(marketId)) return;
+    await store.addBorrower(borrower);
+
+    // New request clears any previous dead state
+    await store.removeDeadRequest(requestKey("deleverage", borrower, marketId));
 
     log(`DeleverageRequested: borrower=${borrower} market=${marketId} repay=${formatEther(repayAmount)} withdraw=${formatEther(withdrawCollateralAmountMax)}`);
 
@@ -295,32 +350,39 @@ function startEventListener() {
     const { profitable, profit } = await evaluateDeleverage(opp);
     if (profitable) {
       log(`  PROFITABLE: est. profit = ${formatEther(profit)} USDT`);
-      await fillDeleverageRequest(opp);
+      await fillDeleverageRequest(opp, profit);
     } else {
       log(`  NOT PROFITABLE: est. profit = ${formatEther(profit)} USDT (min: ${formatEther(config.minProfitUsdt)})`);
     }
   });
 
-  presage.on("LeverageCancelled", (borrower: string, marketId: bigint) => {
+  presage.on("LeverageCancelled", async (borrower: string, marketId: bigint) => {
+    await store.addDeadRequest(requestKey("leverage", borrower, marketId));
     log(`LeverageCancelled: borrower=${borrower} market=${marketId}`);
   });
 
-  presage.on("DeleverageCancelled", (borrower: string, marketId: bigint) => {
+  presage.on("DeleverageCancelled", async (borrower: string, marketId: bigint) => {
+    await store.addDeadRequest(requestKey("deleverage", borrower, marketId));
     log(`DeleverageCancelled: borrower=${borrower} market=${marketId}`);
+  });
+
+  presage.on("LeverageFilled", async (borrower: string, marketId: bigint) => {
+    await store.addDeadRequest(requestKey("leverage", borrower, marketId));
+  });
+
+  presage.on("DeleverageFilled", async (borrower: string, marketId: bigint) => {
+    await store.addDeadRequest(requestKey("deleverage", borrower, marketId));
   });
 }
 
 // ──────── Polling Mode (fallback for RPCs without WebSocket) ────────
 
-// Track known borrowers who have interacted (from events)
-const knownBorrowers = new Set<string>();
-
 async function pollForRequests() {
   const now = BigInt(Math.floor(Date.now() / 1000));
+  const borrowers = await store.getKnownBorrowers();
 
   for (const marketId of config.marketIds) {
-    // Check known borrowers for active requests
-    for (const borrower of knownBorrowers) {
+    for (const borrower of borrowers) {
       // Check leverage request
       try {
         const levReq = await presage.leverageRequests(borrower, marketId);
@@ -338,7 +400,7 @@ async function pollForRequests() {
           const { profitable, profit } = await evaluateLeverage(opp);
           if (profitable) {
             log(`Poll found profitable leverage: borrower=${borrower} market=${marketId} profit=${formatEther(profit)}`);
-            await fillLeverageRequest(opp);
+            await fillLeverageRequest(opp, profit);
           }
         }
       } catch {
@@ -361,7 +423,7 @@ async function pollForRequests() {
           const { profitable, profit } = await evaluateDeleverage(opp);
           if (profitable) {
             log(`Poll found profitable deleverage: borrower=${borrower} market=${marketId} profit=${formatEther(profit)}`);
-            await fillDeleverageRequest(opp);
+            await fillDeleverageRequest(opp, profit);
           }
         }
       } catch {
@@ -372,12 +434,23 @@ async function pollForRequests() {
 }
 
 async function scanHistoricalEvents() {
-  log("Scanning recent events to discover borrowers...");
+  log("Scanning historical events to discover borrowers...");
 
   try {
-    // Look back ~1000 blocks (~50 min on BNB)
     const currentBlock = await provider.getBlockNumber();
-    const fromBlock = Math.max(0, currentBlock - 1000);
+    const lastScanned = await store.getLastScannedBlock();
+
+    // Resume from last scanned block, or fall back to last 1000 blocks
+    const fromBlock = lastScanned > 0
+      ? lastScanned + 1
+      : Math.max(0, currentBlock - 1000);
+
+    if (fromBlock > currentBlock) {
+      log(`Already scanned up to block ${lastScanned}, current=${currentBlock}. Nothing new.`);
+      return;
+    }
+
+    log(`Scanning blocks ${fromBlock}..${currentBlock} (${currentBlock - fromBlock} blocks)`);
 
     const leverageFilter = presage.filters.LeverageRequested();
     const deleverageFilter = presage.filters.DeleverageRequested();
@@ -387,14 +460,21 @@ async function scanHistoricalEvents() {
       presage.queryFilter(deleverageFilter, fromBlock),
     ]);
 
+    const newBorrowers: string[] = [];
     for (const ev of levEvents) {
-      knownBorrowers.add((ev as any).args[0]); // borrower is first indexed arg
+      newBorrowers.push((ev as any).args[0]);
     }
     for (const ev of delEvents) {
-      knownBorrowers.add((ev as any).args[0]);
+      newBorrowers.push((ev as any).args[0]);
     }
 
-    log(`Discovered ${knownBorrowers.size} unique borrowers from recent events.`);
+    if (newBorrowers.length > 0) {
+      await store.addBorrowers(newBorrowers);
+    }
+    await store.setLastScannedBlock(currentBlock);
+
+    const totalBorrowers = (await store.getKnownBorrowers()).size;
+    log(`Discovered ${newBorrowers.length} borrower entries from events. Total known: ${totalBorrowers}`);
   } catch (err: any) {
     log(`Historical scan failed (non-fatal): ${err.message}`);
     log("Will rely on event listener and future polls to discover borrowers.");
@@ -409,6 +489,11 @@ async function main() {
   log(`Markets: [${config.marketIds.join(", ")}]`);
   log(`Min profit: ${formatEther(config.minProfitUsdt)} USDT`);
   log(`Acquire mode: ${config.acquireMode}${config.acquireMode === "jit" ? ` (slippage: ${config.jitSlippageBps} bps, timeout: ${config.jitFillTimeoutMs / 1000}s)` : ""}`);
+
+  // Connect to Redis (falls back to in-memory if unavailable)
+  await store.connect();
+  const stats = await store.getStats();
+  log(`Store [${stats.persistent ? "redis" : "memory"}]: ${stats.borrowers} borrowers, ${stats.deadRequests} dead requests, ${stats.totalFills} fills, last block ${stats.lastScannedBlock}`);
 
   // Disable RPC caching to avoid stale nonces on automining chains (Hardhat)
   provider = new JsonRpcProvider(config.rpcUrl, undefined, { cacheTimeout: -1 });
@@ -429,8 +514,17 @@ async function main() {
   // Start event listener (real-time)
   startEventListener();
 
-  // Also scan historical events and start polling as fallback
+  // Scan historical events (resumes from last scanned block)
   await scanHistoricalEvents();
+
+  // Graceful shutdown — disconnect Redis
+  const shutdown = async (signal: string) => {
+    log(`${signal} received — shutting down...`);
+    await store.disconnect();
+    process.exit(0);
+  };
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
 
   // Poll loop
   log(`Starting poll loop (interval: ${config.pollIntervalMs / 1000}s)...`);
