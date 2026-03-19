@@ -1,0 +1,27 @@
+{
+  "name": "presage-allocator",
+  "version": "0.1.0",
+  "description": "Automated allocator bot for Presage MetaMorpho vault",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "cd .. && npx hardhat test allocator/test/**/*.test.ts --no-compile"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0",
+    "ethers": "^6.13.0",
+    "ioredis": "^5.10.0"
+  },
+  "devDependencies": {
+    "@types/ioredis": "^4.28.10",
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^20.0.0",
+    "chai": "^4.5.0",
+    "mocha": "^10.8.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -81,9 +81,54 @@ These must be completed before the protocol can safely accept user funds.
 
 ---
 
+### 4. MetaMorpho Vault Deployment
+
+**Status:** Not started
+**Effort:** 1-2 days
+**Why it's a blocker:** Without the vault, every LP must individually manage 50-100+ isolated markets with different APRs and expiration dates. This is the primary LP acquisition bottleneck — the vault provides the "set and forget" experience that passive LPs expect.
+
+**What to deploy:**
+- Deploy a `MetaMorpho` vault via `MetaMorphoFactory` with `asset = USDT`, `morpho = Morpho Blue address`
+- Set roles: owner (Presage multisig), curator (ops address), guardian (safety multisig)
+- Set performance fee (e.g., 10% of generated interest) and fee recipient (treasury)
+- Set initial timelock (24 hours minimum)
+- Enable an idle market (unborrrowable, for withdrawal liquidity buffer)
+- For each active Presage market, curator submits a supply cap; after timelock, allocator can supply
+
+**Deploy order update:**
+```
+WrapperFactory -> PriceHub -> FixedPriceAdapter -> Presage -> SafeBatchHelper -> MetaMorpho Vault
+```
+
+---
+
+### 5. Allocator Bot (Vault Rebalancer)
+
+**Status:** Not started
+**Effort:** 2-3 days (can share infrastructure with Safety Bot and Price Keeper)
+**Why it's a blocker:** The vault cannot function without an allocator to distribute LP deposits across markets and rotate liquidity as markets expire.
+
+**What it does:**
+- On new deposit: USDT flows into markets per `supplyQueue` order automatically (MetaMorpho handles this)
+- Periodically: calls `reallocate()` to shift funds from low-utilization or expiring markets to high-demand markets
+- On market open: curator submits cap, allocator updates supply queue to include new market
+- On market approaching expiry: allocator shifts liquidity out before LLTV decay makes the market unattractive
+- Calls `setSupplyQueue()` to prioritize high-yield markets
+- Calls `updateWithdrawQueue()` to remove fully exited markets
+
+**Technical requirements:**
+- Off-chain service (Node.js/TypeScript)
+- Ethers v6, reads vault state + Morpho market utilization
+- Funded wallet for gas only (BNB) — moves the vault's own USDT, doesn't need its own
+- Can run as a cron job (every 4-6 hours) rather than a continuous daemon — not time-sensitive
+
+**If it stops:** Yield drops, some funds sit idle in expiring markets. No funds are lost. Not safety-critical but directly impacts LP experience and revenue.
+
+---
+
 ## High Priority (Before April 7th if possible)
 
-### 4. Solver-Assisted Leverage
+### 6. Solver-Assisted Leverage
 
 **Status:** Not started — Presage has no leverage mechanism
 **Effort:** 2-3 days (Solidity) + 1-2 days (solver bot)
@@ -108,7 +153,7 @@ These must be completed before the protocol can safely accept user funds.
 
 ---
 
-### 5. Health Dashboard
+### 7. Health Dashboard
 
 **Status:** Partially exists in UI testing dashboard
 **Effort:** 1-2 days
@@ -120,39 +165,55 @@ These must be completed before the protocol can safely accept user funds.
 - Highlight "at risk" positions (HF < 1.5)
 - Show oracle freshness (time since last price update)
 - Show decay status (how much LLTV decay has occurred)
+- Show vault composition (which markets, allocation %, blended APY)
 
 ---
 
 ## Post-Launch
 
-### 6. Looping UI
+### 8. Looping UI
 - One-click "3x Leverage" in the frontend
 - Creates leverage request, waits for solver fill, shows result
 - Estimated effort: 2-3 days
 
-### 7. Liquidation Bot SDK/Template
+### 9. Liquidation Bot SDK/Template
 - Publish open-source bot template so third-party liquidators can run bots
 - Reduces reliance on team-operated Safety Bot
 - Include documentation for both Path A and Path B strategies
+- The merge path (Path B) is attractive to market makers who already hold opposite tokens
 - Estimated effort: 2-3 days
 
-### 8. Alerting & Monitoring
+### 10. Alerting & Monitoring
 - Telegram/Discord alerts when positions approach liquidation
-- PagerDuty/OpsGenie integration for oracle staleness
+- PagerDuty/OpsGenie integration for oracle staleness and bot health
 - Grafana dashboard for protocol health metrics
+- Bot liveness monitoring (auto-restart on failure)
 - Estimated effort: 2-3 days
 
-### 9. Cross-Asset Collateral
+### 11. Cross-Asset Collateral
 - Borrow against spot ETH/BNB in Yamata wallet to fund prediction market positions
 - The real long-term moat — no standalone lending protocol can replicate this
 - Requires Yamata wallet integration
 - Estimated effort: Significant (weeks)
 
-### 10. Open Solver Network
+### 12. Open Solver Network
 - Let anyone run a solver bot for leverage fills
 - Competition drives better fills for users
 - Requires solver discovery mechanism (on-chain registry or off-chain relay)
 - Estimated effort: 1-2 weeks
+
+---
+
+## Complete Bot Inventory
+
+All bots can run as a single process with three loops, sharing one server.
+
+| Bot | Purpose | Frequency | Needs Funds? | If It Stops |
+|---|---|---|---|---|
+| **Price Keeper** | Submit oracle proofs to keep prices fresh | Every ~30 min | Gas only (BNB) | Protocol freezes — no operations possible |
+| **Safety Bot** | Liquidate underwater positions | Every ~1 min | USDT + opposite CTF + gas | Bad debt accumulates, lenders lose money |
+| **Allocator Bot** | Rebalance vault across markets | Every ~4-6 hours | Gas only (BNB) | Yield drops, funds idle. No funds lost. |
+| **Solver Bot** | Fill leverage/deleverage requests | Event-driven | CTF inventory + gas | Leverage unavailable, no funds at risk |
 
 ---
 
@@ -163,10 +224,12 @@ These must be completed before the protocol can safely accept user funds.
 | 1 | Safety Bot | 3-5 days | **Launch blocker** | Not started |
 | 2 | Price Keeper | 2-3 days | **Launch blocker** | Not started |
 | 3 | Bot Wallet Funding | 1 day | **Launch blocker** | Needs decision |
-| 4 | Solver-Assisted Leverage | 3-5 days | High | Not started |
-| 5 | Health Dashboard | 1-2 days | High | Partial |
-| 6 | Looping UI | 2-3 days | Post-launch | Not started |
-| 7 | Liquidation Bot SDK | 2-3 days | Post-launch | Not started |
-| 8 | Alerting & Monitoring | 2-3 days | Post-launch | Not started |
-| 9 | Cross-Asset Collateral | Weeks | Post-launch | Not started |
-| 10 | Open Solver Network | 1-2 weeks | Post-launch | Not started |
+| 4 | MetaMorpho Vault | 1-2 days | **Launch blocker** | Not started |
+| 5 | Allocator Bot | 2-3 days | **Launch blocker** | Not started |
+| 6 | Solver-Assisted Leverage | 3-5 days | High | Not started |
+| 7 | Health Dashboard | 1-2 days | High | Partial |
+| 8 | Looping UI | 2-3 days | Post-launch | Not started |
+| 9 | Liquidation Bot SDK | 2-3 days | Post-launch | Not started |
+| 10 | Alerting & Monitoring | 2-3 days | Post-launch | Not started |
+| 11 | Cross-Asset Collateral | Weeks | Post-launch | Not started |
+| 12 | Open Solver Network | 1-2 weeks | Post-launch | Not started |

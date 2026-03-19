@@ -72,6 +72,7 @@ export const WRAPPER_FACTORY_ABI = [
 export const MORPHO_ABI = [
   "function position(bytes32 id, address user) external view returns (uint256 supplyShares, uint128 borrowShares, uint128 collateral)",
   "function market(bytes32 id) external view returns (uint128 totalSupplyAssets, uint128 totalSupplyShares, uint128 totalBorrowAssets, uint128 totalBorrowShares, uint128 lastUpdate, uint128 fee)",
+  "function idToMarketParams(bytes32 id) external view returns (address loanToken, address collateralToken, address oracle, address irm, uint256 lltv)",
   "function setAuthorization(address authorized, bool authorizedStatus) external",
   "function isAuthorized(address authorizer, address authorized) external view returns (bool)"
 ];
@@ -84,5 +85,62 @@ export const CTF_ABI = [
 
 export const ORACLE_ABI = [
   "function price() external view returns (uint256)"
+];
+
+export const META_MORPHO_ABI = [
+  // ERC-4626
+  "function deposit(uint256 assets, address receiver) external returns (uint256 shares)",
+  "function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares)",
+  "function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets)",
+  "function mint(uint256 shares, address receiver) external returns (uint256 assets)",
+  "function totalAssets() external view returns (uint256)",
+  "function convertToShares(uint256 assets) external view returns (uint256)",
+  "function convertToAssets(uint256 shares) external view returns (uint256)",
+  "function maxDeposit(address) external view returns (uint256)",
+  "function maxWithdraw(address owner) external view returns (uint256)",
+  "function maxRedeem(address owner) external view returns (uint256)",
+  "function asset() external view returns (address)",
+  // ERC-20
+  "function balanceOf(address account) external view returns (uint256)",
+  "function totalSupply() external view returns (uint256)",
+  "function name() external view returns (string)",
+  "function symbol() external view returns (string)",
+  "function decimals() external view returns (uint8)",
+  "function approve(address spender, uint256 amount) external returns (bool)",
+  // MetaMorpho-specific
+  "function pendingCap(bytes32 id) external view returns (uint192 value, uint64 validAt)",
+  "function MORPHO() external view returns (address)",
+  "function curator() external view returns (address)",
+  "function guardian() external view returns (address)",
+  "function isAllocator(address) external view returns (bool)",
+  "function fee() external view returns (uint96)",
+  "function feeRecipient() external view returns (address)",
+  "function timelock() external view returns (uint256)",
+  "function supplyQueue(uint256) external view returns (bytes32)",
+  "function supplyQueueLength() external view returns (uint256)",
+  "function withdrawQueue(uint256) external view returns (bytes32)",
+  "function withdrawQueueLength() external view returns (uint256)",
+  "function config(bytes32 id) external view returns (uint184 cap, bool enabled, uint64 removableAt)",
+  "function lastTotalAssets() external view returns (uint256)",
+  "function owner() external view returns (address)",
+  // Curator operations
+  "function submitCap(tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) marketParams, uint256 newSupplyCap) external",
+  "function acceptCap(tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) marketParams) external",
+  // Allocator operations
+  "function reallocate(tuple(tuple(address loanToken, address collateralToken, address oracle, address irm, uint256 lltv) marketParams, uint256 assets)[] allocations) external",
+  "function setSupplyQueue(bytes32[] newSupplyQueue) external",
+  "function updateWithdrawQueue(uint256[] indexes) external",
+  // Owner operations
+  "function setCurator(address newCurator) external",
+  "function setIsAllocator(address newAllocator, bool newIsAllocator) external",
+  "function setFee(uint256 newFee) external",
+  "function setFeeRecipient(address newFeeRecipient) external",
+];
+
+export const META_MORPHO_FACTORY_ABI = [
+  "function MORPHO() external view returns (address)",
+  "function isMetaMorpho(address) external view returns (bool)",
+  "function createMetaMorpho(address initialOwner, uint256 initialTimelock, address asset, string name, string symbol, bytes32 salt) external returns (address)",
+  "event CreateMetaMorpho(address indexed metaMorpho, address indexed caller, address initialOwner, uint256 initialTimelock, address indexed asset, string name, string symbol, bytes32 salt)",
 ];
 

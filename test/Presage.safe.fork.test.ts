@@ -111,7 +111,7 @@ describe("Presage Safe Batch Fork Test", function () {
         ["address", "address", "address", "address", "uint256"],
         [market.morphoParams.loanToken, market.morphoParams.collateralToken, market.morphoParams.oracle, market.morphoParams.irm, market.morphoParams.lltv]
     ));
-    const morpho = await ethers.getContractAt("IMorpho", MORPHO);
+    const morpho = await ethers.getContractAt("contracts/vendor/morpho/IMorpho.sol:IMorpho", MORPHO);
     const position = await morpho.position(mid, safeAddr);
     
     expect(position.collateral).to.equal(collateralAmount);

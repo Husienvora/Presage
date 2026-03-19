@@ -82,7 +82,7 @@ describe("Presage Leverage Fork Test (BNB Mainnet)", function () {
     await priceHub.seedPrice(POSITION_ID, parseEther("1"));
 
     // Get contract references
-    morpho = await ethers.getContractAt("IMorpho", MORPHO);
+    morpho = await ethers.getContractAt("contracts/vendor/morpho/IMorpho.sol:IMorpho", MORPHO);
     usdt = await ethers.getContractAt("IERC20", USDT);
 
     // Fund USDT

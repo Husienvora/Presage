@@ -143,7 +143,7 @@ describe("Presage Fork Test (BNB Mainnet)", function () {
     const mp = market.morphoParams;
     const mid = morphoMarketId(mp);
 
-    const morpho = await ethers.getContractAt("IMorpho", MORPHO);
+    const morpho = await ethers.getContractAt("contracts/vendor/morpho/IMorpho.sol:IMorpho", MORPHO);
     const aliceAddr = await alice.getAddress();
     const position = await morpho.position(mid, aliceAddr);
 
@@ -159,7 +159,7 @@ describe("Presage Fork Test (BNB Mainnet)", function () {
     await priceHub.seedPrice(POSITION_ID, currentPrice);
 
     // 2. Authorize Presage on Morpho
-    const morpho = await ethers.getContractAt("IMorpho", MORPHO);
+    const morpho = await ethers.getContractAt("contracts/vendor/morpho/IMorpho.sol:IMorpho", MORPHO);
     await morpho.connect(alice).setAuthorization(await presage.getAddress(), true);
 
     // 3. Borrow
@@ -204,7 +204,7 @@ describe("Presage Fork Test (BNB Mainnet)", function () {
     const mp = market.morphoParams;
     const mid = morphoMarketId(mp);
 
-    const morpho = await ethers.getContractAt("IMorpho", MORPHO);
+    const morpho = await ethers.getContractAt("contracts/vendor/morpho/IMorpho.sol:IMorpho", MORPHO);
     const aliceAddr = await alice.getAddress();
 
     // Snapshot borrow state before time warp
@@ -269,7 +269,7 @@ describe("Presage Fork Test (BNB Mainnet)", function () {
     const marketId = 1n;
     const aliceAddr = await alice.getAddress();
 
-    const morpho = await ethers.getContractAt("IMorpho", MORPHO);
+    const morpho = await ethers.getContractAt("contracts/vendor/morpho/IMorpho.sol:IMorpho", MORPHO);
     const market = await presage.getMarket(marketId);
     const mp = market.morphoParams;
     const mid = morphoMarketId(mp);
@@ -334,7 +334,7 @@ describe("Presage Fork Test (BNB Mainnet)", function () {
     const mp = market.morphoParams;
     const mid = morphoMarketId(mp);
 
-    const morpho = await ethers.getContractAt("IMorpho", MORPHO);
+    const morpho = await ethers.getContractAt("contracts/vendor/morpho/IMorpho.sol:IMorpho", MORPHO);
     const usdt = await ethers.getContractAt("IERC20", USDT);
     const aliceAddr = await alice.getAddress();
     const pos = await morpho.position(mid, aliceAddr);
@@ -519,7 +519,7 @@ describe("Presage Fork Test (BNB Mainnet)", function () {
     const market = await presage.getMarket(marketId);
     const mp = market.morphoParams;
     const mid = morphoMarketId(mp);
-    const morpho = await ethers.getContractAt("IMorpho", MORPHO);
+    const morpho = await ethers.getContractAt("contracts/vendor/morpho/IMorpho.sol:IMorpho", MORPHO);
     const pos = await morpho.position(mid, aliceAddr);
     console.log(`    Alice collateral: ${formatEther(BigInt(pos.collateral))} wCTF`);
 
@@ -572,7 +572,7 @@ describe("Presage Fork Test (BNB Mainnet)", function () {
     console.log(`    HF after price drop: ${formatEther(hf)}`);
     expect(Number(formatEther(hf))).to.be.lt(1.0);
 
-    const morpho = await ethers.getContractAt("IMorpho", MORPHO);
+    const morpho = await ethers.getContractAt("contracts/vendor/morpho/IMorpho.sol:IMorpho", MORPHO);
     const market = await presage.getMarket(marketId);
     const mp = market.morphoParams;
     const mid = morphoMarketId(mp);
@@ -696,7 +696,7 @@ describe("Presage Fork Test (BNB Mainnet)", function () {
 
     // Seed price + authorize
     await priceHub.seedPrice(POSITION_ID_3, parseEther("1"));
-    const morpho = await ethers.getContractAt("IMorpho", MORPHO);
+    const morpho = await ethers.getContractAt("contracts/vendor/morpho/IMorpho.sol:IMorpho", MORPHO);
     await morpho.connect(alice).setAuthorization(await presage2.getAddress(), true);
 
     // Borrow

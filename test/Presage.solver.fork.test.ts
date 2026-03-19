@@ -135,7 +135,7 @@ describe("Solver Logic Fork Test (BNB Mainnet)", function () {
 
     await priceHub.seedPrice(POSITION_ID, parseEther("0.65")); // CTF price = $0.65
 
-    morpho = await ethers.getContractAt("IMorpho", MORPHO);
+    morpho = await ethers.getContractAt("contracts/vendor/morpho/IMorpho.sol:IMorpho", MORPHO);
     usdt = await ethers.getContractAt("IERC20", USDT);
 
     // Fund accounts

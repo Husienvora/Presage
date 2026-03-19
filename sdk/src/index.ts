@@ -1,5 +1,5 @@
 import { ethers, Contract, Signer, Provider, BigNumberish } from "ethers";
-import { PRESAGE_ABI, SAFE_BATCH_HELPER_ABI, ERC20_ABI, WRAPPER_FACTORY_ABI, MORPHO_ABI, PRICE_HUB_ABI, IRM_ABI, CTF_ABI, ORACLE_ABI } from "./abis";
+import { PRESAGE_ABI, SAFE_BATCH_HELPER_ABI, ERC20_ABI, WRAPPER_FACTORY_ABI, MORPHO_ABI, PRICE_HUB_ABI, IRM_ABI, CTF_ABI, ORACLE_ABI, META_MORPHO_ABI } from "./abis";
 
 export interface PresageConfig {
   presageAddress: string;
@@ -590,6 +590,156 @@ export class PresageClient {
       repayAmount,
       releaseAmount
     );
+  }
+}
+
+export interface MarketInfo {
+  morphoMarketId: string;
+  supplyAssets: bigint;
+  cap: bigint;
+  enabled: boolean;
+}
+
+export class VaultClient {
+  public readonly vault: Contract;
+  public readonly morpho: Contract;
+  private readonly _signer?: Signer;
+
+  constructor(
+    vaultAddress: string,
+    morphoAddress: string,
+    provider: Provider,
+    signer?: Signer,
+  ) {
+    this._signer = signer;
+    const runner = signer || provider;
+    this.vault = new Contract(vaultAddress, META_MORPHO_ABI, runner);
+    this.morpho = new Contract(morphoAddress, MORPHO_ABI, runner);
+  }
+
+  private requireSigner(): Signer {
+    if (!this._signer) throw new Error("VaultClient: signer required for write operations");
+    return this._signer;
+  }
+
+  // ──────── LP Operations ────────
+
+  async deposit(amount: BigNumberish) {
+    const signer = this.requireSigner();
+    const receiver = await signer.getAddress();
+    return this.vault.deposit(amount, receiver);
+  }
+
+  async withdraw(amount: BigNumberish) {
+    const signer = this.requireSigner();
+    const addr = await signer.getAddress();
+    return this.vault.withdraw(amount, addr, addr);
+  }
+
+  async redeem(shares: BigNumberish) {
+    const signer = this.requireSigner();
+    const addr = await signer.getAddress();
+    return this.vault.redeem(shares, addr, addr);
+  }
+
+  // ──────── Read Operations ────────
+
+  async getSharePrice(): Promise<bigint> {
+    const one = ethers.parseEther("1");
+    return this.vault.convertToAssets(one);
+  }
+
+  async getTotalAssets(): Promise<bigint> {
+    return this.vault.totalAssets();
+  }
+
+  async getUserShares(user: string): Promise<bigint> {
+    return this.vault.balanceOf(user);
+  }
+
+  async getMaxWithdrawable(user: string): Promise<bigint> {
+    return this.vault.maxWithdraw(user);
+  }
+
+  /**
+   * Computes the vault's weighted-average supply APY across all enabled markets.
+   * For each market: supplyAPR = borrowRate * utilization * (1 - vaultFee).
+   * Weight by the vault's allocation to that market.
+   */
+  async getVaultAPY(): Promise<number> {
+    const totalAssets = await this.vault.totalAssets();
+    if (totalAssets === 0n) return 0;
+
+    const fee = Number(await this.vault.fee()) / 1e18;
+    const wqLen = Number(await this.vault.withdrawQueueLength());
+    const vaultAddr = await this.vault.getAddress();
+
+    let weightedRate = 0;
+
+    for (let i = 0; i < wqLen; i++) {
+      const mid = await this.vault.withdrawQueue(i);
+      const mkt = await this.morpho.market(mid);
+      const pos = await this.morpho.position(mid, vaultAddr);
+
+      const totalSupplyAssets = BigInt(mkt.totalSupplyAssets);
+      const totalSupplyShares = BigInt(mkt.totalSupplyShares);
+      const totalBorrowAssets = BigInt(mkt.totalBorrowAssets);
+
+      if (totalSupplyShares === 0n || totalSupplyAssets === 0n) continue;
+
+      // Vault's supply in this market
+      const vaultSupply = (BigInt(pos.supplyShares) * totalSupplyAssets) / totalSupplyShares;
+      if (vaultSupply === 0n) continue;
+
+      // Market utilization
+      const utilization = Number(totalBorrowAssets) / Number(totalSupplyAssets);
+
+      // Get borrow rate from IRM
+      const params = await this.morpho.idToMarketParams(mid);
+      const irm = new Contract(params.irm, IRM_ABI, this.vault.runner!);
+      const borrowRatePerSec = BigInt(await irm.borrowRateView(params, mkt));
+
+      // Supply APR = borrow_rate_per_sec * seconds_per_year * utilization
+      const SECONDS_PER_YEAR = 31536000;
+      const borrowAPR = Number(borrowRatePerSec) * SECONDS_PER_YEAR / 1e18;
+      const supplyAPR = borrowAPR * utilization;
+
+      // Weight by allocation share
+      const weight = Number(vaultSupply) / Number(totalAssets);
+      weightedRate += supplyAPR * weight;
+    }
+
+    // Adjust for vault performance fee, return as percentage
+    return weightedRate * (1 - fee) * 100;
+  }
+
+  async getEnabledMarkets(): Promise<MarketInfo[]> {
+    const wqLen = Number(await this.vault.withdrawQueueLength());
+    const markets: MarketInfo[] = [];
+    for (let i = 0; i < wqLen; i++) {
+      const mid = await this.vault.withdrawQueue(i);
+      const cfg = await this.vault.config(mid);
+      const pos = await this.morpho.position(mid, await this.vault.getAddress());
+      const mkt = await this.morpho.market(mid);
+      const supplyAssets = BigInt(mkt.totalSupplyShares) > 0n
+        ? (BigInt(pos.supplyShares) * BigInt(mkt.totalSupplyAssets)) / BigInt(mkt.totalSupplyShares)
+        : 0n;
+      markets.push({
+        morphoMarketId: mid,
+        supplyAssets,
+        cap: BigInt(cfg.cap),
+        enabled: cfg.enabled,
+      });
+    }
+    return markets;
+  }
+
+  async getMarketAllocation(morphoMarketId: string): Promise<bigint> {
+    const vaultAddr = await this.vault.getAddress();
+    const pos = await this.morpho.position(morphoMarketId, vaultAddr);
+    const mkt = await this.morpho.market(morphoMarketId);
+    if (BigInt(mkt.totalSupplyShares) === 0n) return 0n;
+    return (BigInt(pos.supplyShares) * BigInt(mkt.totalSupplyAssets)) / BigInt(mkt.totalSupplyShares);
   }
 }
 

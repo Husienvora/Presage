@@ -23,6 +23,7 @@ const config: HardhatUserConfig = {
         : undefined,
       chainId: process.env.FORK_BNB ? 56 : 31337,
       hardfork: "cancun",
+      allowUnlimitedContractSize: true, // MetaMorpho exceeds 24KB EIP-170 limit
       chains: {
         56: {
           hardforkHistory: {
