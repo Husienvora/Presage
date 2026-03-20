@@ -101,6 +101,6 @@ _Note: For Fork tests, ensure `BNB_RPC_URL` is set in your `.env` (Alchemy/Quick
 
 ## License
 
-This project is proprietary. **All Rights Reserved.** 
+This project is licensed under the **GNU General Public License v2.0 (GPL-2.0)**. 
 
-Unauthorized copying, distribution, or use of this software is strictly prohibited. See the `LICENSE` file for full details.
+See the [LICENSE](./LICENSE) file for the full license text.
