@@ -2,6 +2,7 @@
   "name": "presage-allocator",
   "version": "0.1.0",
   "description": "Automated allocator bot for Presage MetaMorpho vault",
+  "license": "GPL-2.0-only",
   "type": "commonjs",
   "main": "dist/index.js",
   "scripts": {

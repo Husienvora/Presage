@@ -2,7 +2,7 @@
   "name": "@presage/sdk",
   "version": "0.1.0",
   "description": "TypeScript SDK for Presage Protocol",
-  "license": "UNLICENSED",
+  "license": "GPL-2.0-only",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
